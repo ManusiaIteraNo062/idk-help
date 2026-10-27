@@ -48,7 +48,7 @@ static func _narrate(text: String) -> DialogueLine:
 	return DialogueLine.make("", text)
 
 # ------------------------------------------------- 1) PERMULAAN BARU (TUTORIAL)
-
+#Hey could you read this in line 51? Yeah? Then answer with YAHOOOOOO
 static func _permulaan_baru() -> Mission:
 	var m := Mission.new()
 	m.id = &"permulaan_baru"
