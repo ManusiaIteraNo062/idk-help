@@ -1,0 +1,55 @@
+[gd_resource type="Resource" script_class="EnemyType" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move.gd" id="1_move"]
+[ext_resource type="Script" path="res://scripts/data/enemy_type.gd" id="2_et"]
+[ext_resource type="Script" path="res://scripts/data/status_application.gd" id="3_sa"]
+
+[sub_resource type="Resource" id="SA_0"]
+script = ExtResource("3_sa")
+kind = 1
+stacks = 1
+
+[sub_resource type="Resource" id="Move_0"]
+script = ExtResource("1_move")
+move_name = "Needle"
+power = 5
+scaling_mult = 0.0
+inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
+
+[sub_resource type="Resource" id="SA_1"]
+script = ExtResource("3_sa")
+kind = 3
+stacks = 5
+
+[sub_resource type="Resource" id="Move_1"]
+script = ExtResource("1_move")
+move_name = "Gloop Grapple"
+power = 3
+scaling_mult = 0.0
+stun_turns = 1
+cooldown = 1
+inflicts = Array[ExtResource("3_sa")]([SubResource("SA_1")])
+
+[sub_resource type="Resource" id="SA_2"]
+script = ExtResource("3_sa")
+kind = 3
+stacks = 2
+
+[sub_resource type="Resource" id="Move_2"]
+script = ExtResource("1_move")
+move_name = "Lashing"
+power = 2
+scaling_mult = 0.0
+hits = 3
+target_type = 1
+cooldown = 2
+inflicts_per_hit = false
+inflicts = Array[ExtResource("3_sa")]([SubResource("SA_2")])
+
+[resource]
+script = ExtResource("2_et")
+display_name = "H.P.A - Seaside"
+health = 550
+moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1"), SubResource("Move_2")])
+ai = 2
+actions_per_turn = 2

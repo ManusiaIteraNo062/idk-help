@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="Mission" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mission.gd" id="1_m"]
+[ext_resource type="Script" path="res://scripts/data/enemy_wave.gd" id="2_wave"]
+[ext_resource type="Script" path="res://scripts/data/enemy_type.gd" id="3_et"]
+
+[resource]
+script = ExtResource("1_m")
+id = &"untuk_tahun_yang_baru"
+title = "Untuk Tahun yang Baru"
+difficulty = "Story"
+summary = "TODO: story scene, no battle"
+chapter_label = "Misi 13"
+location = "HALAMAN BELAKANG KULON OFFICE, TARAHAN, LAMPUNG"
+fragment_reward = 0
+waves = Array[ExtResource("2_wave")]([])

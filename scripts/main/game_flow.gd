@@ -133,7 +133,9 @@ func _on_mission_selected(mission: Mission) -> void:
 
 	# 3) Battle (builds under black, reveals, ends with a fade to black).
 	await _fader.fade_out(0.4)
-	var won := await _run_battle(mission)
+	var won := true # story-only missions (no waves) skip the battle
+	if mission.wave_count() > 0:
+		won = await _run_battle(mission)
 
 	# 4) Post-battle cutscene, then rewards on a win.
 	_fader.fade_in(0.5)
@@ -152,11 +154,13 @@ func _on_mission_selected(mission: Mission) -> void:
 func _give_rewards(mission: Mission) -> void:
 	var first_clear := not _state.is_cleared(mission.id)
 	var amount := mission.fragment_reward
-	if not first_clear:
+	if not first_clear and amount > 0:
 		amount = maxi(1, int(ceil(mission.fragment_reward * REPLAY_REWARD_RATIO)))
 	_state.mark_cleared(mission.id)
 	_state.add_fragments(amount)
 	_state.save()
+	if amount <= 0:
+		return # story-only mission: nothing to show
 	await _rewards.show_rewards(mission.title, amount, first_clear, _state.fragments)
 
 ## Builds a fresh battle under the black screen, reveals it, waits for the
@@ -174,8 +178,10 @@ func _run_battle(mission: Mission) -> bool:
 	bm.player_team = UnitFactory.make_player_team(_state)
 
 	var enemies: Array[BattleUnit] = []
-	enemies.assign(mission.build_enemies.call())
+	enemies.assign(mission.build_wave(0))
 	bm.enemy_team = enemies
+	bm.wave_count = mission.wave_count()
+	bm.wave_factory = func(i: int): return mission.build_wave(i)
 
 	_give_starting_items(bm)
 

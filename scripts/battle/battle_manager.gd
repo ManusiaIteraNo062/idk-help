@@ -19,11 +19,19 @@ signal player_turn_started(unit: BattleUnit, available_actions: Dictionary)
 signal enemy_turn_started(unit: BattleUnit)
 signal action_resolved(unit: BattleUnit, description: String)
 signal battle_ended(player_won: bool)
+signal wave_started(units: Array) # a new group of enemies has just appeared (waves 2+)
 
 @export var player_team: Array[BattleUnit] = [] # up to 4 (rule 3)
 @export var enemy_team: Array[BattleUnit] = []
 
 var party_inventory: Dictionary = {} # Item -> int quantity
+
+## Multi-wave battles: enemy_team is wave 1; wave_factory(i) builds wave i
+## (0-based) as an Array of BattleUnit. The party's HP, energy, items and
+## statuses carry over between waves. battle_ended fires after the LAST wave.
+var wave_count: int = 1
+var wave_factory: Callable
+var current_wave: int = 1 # 1-based, for display
 
 const CRIT_CHANCE := 1.0 / 14.0 # fixed for BOTH allies and enemies
 const CRIT_MULTIPLIER := 1.5
@@ -39,7 +47,15 @@ func add_item(item: Item, quantity: int = 1) -> void:
 
 func start_battle() -> void:
 	_round_number = 0
+	# Statuses write their own log lines (applied / damage / broken).
+	for u in player_team + enemy_team:
+		_hook_unit(u)
+	if wave_count > 1:
+		battle_log.emit("=== Wave 1 of %d ===" % wave_count)
 	_run_battle_loop()
+
+func _hook_unit(u: BattleUnit) -> void:
+	u.status_log.connect(func(text: String): battle_log.emit(text))
 
 func _run_battle_loop() -> void:
 	while true:
@@ -57,7 +73,7 @@ func _run_battle_loop() -> void:
 			if not unit.is_alive():
 				continue
 			await _process_player_turn(unit)
-			if _check_battle_over():
+			if await _check_battle_over():
 				return
 
 		# Enemy team moves second.
@@ -65,7 +81,7 @@ func _run_battle_loop() -> void:
 			if not unit.is_alive():
 				continue
 			_process_enemy_turn(unit)
-			if _check_battle_over():
+			if await _check_battle_over():
 				return
 
 ## Returns what a unit is currently allowed to pick from. The UI should
@@ -78,24 +94,32 @@ func get_available_actions(unit: BattleUnit) -> Dictionary:
 		"items": party_inventory.keys().filter(func(i): return party_inventory[i] > 0),
 	}
 
-## Returns true if the unit loses its turn to a stun (and ticks the stun
-## down by one). Called BEFORE anything else in a turn, so a stunned enemy's
-## fixed pattern does not advance on the lost turn.
+## Returns true if the unit loses its turn to a stun (and uses up one stun
+## turn). Called BEFORE anything else in a turn, so a stunned enemy's
+## pattern does not advance on the lost turn.
 func _consume_stun(unit: BattleUnit) -> bool:
-	if unit.stun_turns <= 0:
+	if not unit.consume_stun():
 		return false
-	unit.stun_turns -= 1
 	battle_log.emit("%s is stunned and loses the turn!" % unit.stats.character_name)
 	return true
 
+## End of a unit's turn: damage over time, then status durations count down.
+func _finish_turn(unit: BattleUnit) -> void:
+	unit.is_acting = false
+	unit.tick_end_of_turn()
+	unit.tick_cooldowns()
+
 func _process_player_turn(unit: BattleUnit) -> void:
+	unit.is_acting = true
 	if _consume_stun(unit):
+		_finish_turn(unit)
 		return
 	player_turn_started.emit(unit, get_available_actions(unit))
 	_waiting_for_player = true
 	await _player_action_submitted
 	_waiting_for_player = false
 	_execute_action(unit, _pending_action)
+	_finish_turn(unit)
 
 ## Called by the UI (or any input layer) once the player has fully chosen
 ## an action + target(s) for the unit whose turn it currently is.
@@ -109,11 +133,20 @@ func submit_player_action(action_data: Dictionary) -> void:
 	_player_action_submitted.emit()
 
 func _process_enemy_turn(unit: BattleUnit) -> void:
+	unit.is_acting = true
 	if _consume_stun(unit):
+		_finish_turn(unit)
 		return
 	enemy_turn_started.emit(unit)
-	var action_data := _choose_enemy_action(unit)
-	_execute_action(unit, action_data)
+	# Mobs act once per turn, bosses twice (BattleUnit.actions_per_turn).
+	for i in range(maxi(1, unit.actions_per_turn)):
+		if not unit.is_alive():
+			break
+		var action_data := _choose_enemy_action(unit)
+		if action_data.is_empty():
+			break
+		_execute_action(unit, action_data)
+	_finish_turn(unit)
 
 ## Enemy action selection.
 ## Priority 1: a fixed EnemyMoveset (rule addition) - no energy, no
@@ -127,7 +160,9 @@ func _choose_enemy_action(unit: BattleUnit) -> Dictionary:
 		return {}
 
 	if unit.moveset and not unit.moveset.moves.is_empty():
-		var move: Move = unit.moveset.next_move()
+		var move: Move = unit.moveset.choose(unit)
+		if move == null:
+			return {}
 		return {"type": "enemy_move", "move": move, "targets": _resolve_targets(move, alive_targets)}
 
 	var usable_alterations: Array = unit.alteration_moves.filter(func(m): return unit.can_use_move(m))
@@ -161,6 +196,7 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 		"enemy_move":
 			# Fixed-pattern enemy move: no Basic/Alteration split, no energy
 			# cost, no energy gain. The pattern itself is the only limiter.
+			unit.start_cooldown(action_data["move"])
 			_resolve_move(unit, action_data["move"], targets)
 		"basic":
 			# Basic moves are free, and using one still fills the bar (rule 6).
@@ -168,7 +204,7 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 			unit.gain_energy(1)
 		"alteration":
 			var move: Move = action_data["move"]
-			if unit.can_use_move(move) and unit.spend_energy(move.energy_cost):
+			if unit.can_use_move(move) and unit.spend_energy(unit.energy_cost_for(move)):
 				unit.record_use(move)
 				_resolve_move(unit, move, targets)
 			else:
@@ -186,10 +222,13 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 	action_resolved.emit(unit, "%s's turn resolved." % unit.stats.character_name)
 
 func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
+	# Statuses the user grants itself, once per use (Time Dilation, Flame Wings).
+	_apply_statuses(user, move.grants_self)
+
 	# Self-buff (Oxypetalum - Strengthen): no dodge, no damage.
 	if move.buff_attack_flat != 0 or move.buff_attack_cap_mult != 0.0:
 		var gain: int = move.buff_attack_flat + int(user.stats.capability * move.buff_attack_cap_mult)
-		user.bonus_attack += gain
+		user.add_status(StatusDefs.Kind.STRENGTHEN, 1, 0, gain, false)
 		battle_log.emit("%s uses %s, gaining %d Attack!" % [
 			user.stats.character_name, move.move_name, gain
 		])
@@ -217,18 +256,23 @@ func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
 
 		# Multi-hit moves (Heroic = 2): each hit rolls dodge/crit separately,
 		# and stops early if the target is already down.
+		var landed := false
 		for i in range(move.hits):
 			if not target.is_alive():
 				break
-			_resolve_hit(user, move, target)
+			var connected := _resolve_hit(user, move, target, move.inflicts_per_hit or not landed)
+			landed = landed or connected
 
 ## One damaging hit: dodge -> damage (+crit) -> lifesteal -> execute -> stun.
-func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit) -> void:
+## Returns true if the hit connected (was not dodged).
+func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit, apply_inflicts: bool = true) -> bool:
 	if target.roll_dodge():
 		battle_log.emit("%s dodges %s's %s!" % [
 			target.stats.character_name, user.stats.character_name, move.move_name
 		])
-		return
+		if move.effects_ignore_dodge:
+			_apply_hit_statuses(move, target, apply_inflicts)
+		return false
 
 	# BASIC = physical, scales off Attack (including buffs). ALTERATION =
 	# magic/special, scales off Capability. This applies to enemy
@@ -266,16 +310,34 @@ func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit) -> void:
 			target.kill()
 			battle_log.emit("%s is condemned!" % target.stats.character_name)
 
-	# Stun (Backhand): only lands if the hit connected and the target lived.
-	if move.stun_turns > 0 and target.is_alive():
-		target.stun_turns = max(target.stun_turns, move.stun_turns)
-		battle_log.emit("%s is stunned!" % target.stats.character_name)
+	# Stun (Backhand) and `inflicts` statuses (Gloop, Fire...): only land if the
+	# hit connected and the target lived.
+	_apply_hit_statuses(move, target, apply_inflicts)
+
+	# Flame Wings: whoever connects with the holder catches a stack of Fire.
+	if target.has_status(StatusDefs.Kind.FLAME_WINGS):
+		user.add_status(StatusDefs.Kind.FIRE)
+	return true
 
 	# On-hit self-heal (Secure): Capability/125 of the user's max HP.
 	if move.self_heal_max_hp_per_cap > 0.0:
 		var self_healed := int(user.stats.max_health * user.stats.capability * move.self_heal_max_hp_per_cap)
 		user.heal(self_healed)
 		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, self_healed])
+
+## Stun + the move's `inflicts` list, applied to one target.
+func _apply_hit_statuses(move: Move, target: BattleUnit, with_inflicts: bool = true) -> void:
+	if not target.is_alive():
+		return
+	if move.stun_turns > 0:
+		target.add_status(StatusDefs.Kind.STUN, 1, move.stun_turns)
+	if with_inflicts:
+		_apply_statuses(target, move.inflicts)
+
+func _apply_statuses(unit: BattleUnit, applications: Array) -> void:
+	for a in applications:
+		if a:
+			unit.add_status(a.kind, a.stacks, a.duration, a.magnitude)
 
 func _resolve_item(user: BattleUnit, item: Item, targets: Array) -> void:
 	if party_inventory.get(item, 0) <= 0:
@@ -297,6 +359,8 @@ func _resolve_item(user: BattleUnit, item: Item, targets: Array) -> void:
 				user.stats.character_name, item.item_name, target.stats.character_name, item.heal_amount
 			])
 
+## Returns true when the whole battle is over. Clearing a wave that is not the
+## last one spawns the next wave and returns false.
 func _check_battle_over() -> bool:
 	var players_alive: bool = not player_team.filter(func(u): return u.is_alive()).is_empty()
 	var enemies_alive: bool = not enemy_team.filter(func(u): return u.is_alive()).is_empty()
@@ -305,7 +369,30 @@ func _check_battle_over() -> bool:
 		battle_ended.emit(false)
 		return true
 	if not enemies_alive:
+		if current_wave < wave_count and wave_factory.is_valid():
+			await _spawn_next_wave()
+			return false
 		battle_log.emit("Victory!")
 		battle_ended.emit(true)
 		return true
 	return false
+
+func _spawn_next_wave() -> void:
+	battle_log.emit("Wave cleared!")
+	await get_tree().create_timer(1.0).timeout
+	var units: Array = wave_factory.call(current_wave)
+	current_wave += 1
+	var typed: Array[BattleUnit] = []
+	typed.assign(units)
+	enemy_team = typed
+	for u in typed:
+		_hook_unit(u)
+		get_parent().add_child(u) # so _ready sets its HP
+	battle_log.emit("=== Wave %d of %d ===" % [current_wave, wave_count])
+	wave_started.emit(typed)
+
+## Test hook: resolves one hit and returns the HP the target lost.
+func _resolve_hit_for_test(user: BattleUnit, move: Move, target: BattleUnit) -> int:
+	var before := target.current_health
+	_resolve_hit(user, move, target)
+	return before - target.current_health

@@ -55,3 +55,26 @@ enum Target { SINGLE_ENEMY, ALL_ENEMIES, SINGLE_ALLY, ALL_ALLIES, SELF }
 ## If both are 0, the old flat heal (power + Capability) is used.
 @export var heal_pct_base: float = 0.0
 @export var heal_pct_per_cap: float = 0.0
+
+# --- Status effects (see StatusDefs) ---------------------------------------
+
+## Applied to the TARGET on every hit that connects (Gloop, Fire, Poison...).
+## Multi-hit moves apply it once per hit.
+@export var inflicts: Array[StatusApplication] = []
+
+## Applied to the USER once per use (Time Dilation, Flame Wings...).
+@export var grants_self: Array[StatusApplication] = []
+
+## true = stun and `inflicts` still land when the target dodges
+## (Red Sleigh - Clockwatch). The damage can still be dodged.
+@export var effects_ignore_dodge: bool = false
+
+## Enemy cooldown: after use, the move can't be used for this many of the
+## unit's next turns. 0 = no cooldown. Mobs treat moves with a cooldown as
+## their "big attacks" and prefer them whenever they are ready.
+@export var cooldown: int = 0
+
+## true = `inflicts` lands on every hit that connects (Firefist: 1 Fire per hit).
+## false = once per target per use, on the first hit that connects
+## (Clawing: 2 hits, but only 2 Gloop in total).
+@export var inflicts_per_hit: bool = true

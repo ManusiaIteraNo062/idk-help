@@ -35,15 +35,24 @@ func _ready() -> void:
 		_on_log("[%s is acting...]" % u.stats.character_name)
 	)
 	battle_manager.battle_ended.connect(_on_battle_ended)
+	battle_manager.wave_started.connect(_on_wave_started)
 
 	for u in battle_manager.player_team:
 		u.hp_changed.connect(func(_unit, _hp): _refresh_status())
 		u.energy_changed.connect(func(_unit, _e): _refresh_status())
+		u.statuses_changed.connect(func(_unit): _refresh_status())
 	for u in battle_manager.enemy_team:
 		u.hp_changed.connect(func(_unit, _hp): _refresh_status())
+		u.statuses_changed.connect(func(_unit): _refresh_status())
 
 	_refresh_status()
 	battle_manager.start_battle()
+
+func _on_wave_started(units: Array) -> void:
+	for u in units:
+		u.hp_changed.connect(func(_unit, _hp): _refresh_status())
+		u.statuses_changed.connect(func(_unit): _refresh_status())
+	_refresh_status()
 
 func _build_layout() -> void:
 	# Plain pixel math, not anchors - placed directly from the actual
@@ -198,7 +207,7 @@ func _show_move_menu(kind: String) -> void:
 	for move in moves:
 		var label: String = move.move_name
 		if kind == "alteration":
-			label += " (%d energy)" % move.energy_cost
+			label += " (%d energy)" % _current_unit.energy_cost_for(move)
 			var left: int = _current_unit.uses_left(move)
 			if left >= 0:
 				label += " [%d left]" % left
@@ -207,7 +216,7 @@ func _show_move_menu(kind: String) -> void:
 	if kind == "alteration":
 		for move in _current_actions.get("locked_alteration", []):
 			# Say WHY it's locked: out of uses, or not enough energy.
-			var why := "needs %d energy" % move.energy_cost
+			var why := "needs %d energy" % _current_unit.energy_cost_for(move)
 			if _current_unit.uses_left(move) == 0:
 				why = "no uses left"
 			_add_button("%s (%s)" % [move.move_name, why], func(): pass, false)
@@ -339,12 +348,28 @@ func _refresh_status() -> void:
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		entry.add_child(name_lbl)
 
+		var status_txt := u.status_text()
+		if status_txt != "":
+			var st_lbl := Label.new()
+			st_lbl.text = status_txt
+			st_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			st_lbl.add_theme_font_size_override("font_size", 12)
+			st_lbl.modulate = Color(1.0, 0.85, 0.4)
+			entry.add_child(st_lbl)
+
 		party_status.add_child(entry)
 
 	for c in enemy_status.get_children():
 		c.queue_free()
+	if battle_manager.wave_count > 1:
+		var wave_lbl := Label.new()
+		wave_lbl.text = "Wave %d / %d" % [battle_manager.current_wave, battle_manager.wave_count]
+		wave_lbl.modulate = Color(1, 1, 1, 0.6)
+		enemy_status.add_child(wave_lbl)
 	for u in battle_manager.enemy_team:
 		var lbl := Label.new()
 		var hp_text := "%d/%d" % [u.current_health, u.stats.max_health] if u.is_alive() else "KO"
 		lbl.text = "%s  HP %s" % [u.stats.character_name, hp_text]
+		if u.is_alive() and u.status_text() != "":
+			lbl.text += "   [%s]" % u.status_text()
 		enemy_status.add_child(lbl)

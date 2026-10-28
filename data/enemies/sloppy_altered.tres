@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="EnemyType" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/move.gd" id="1_move"]
+[ext_resource type="Script" path="res://scripts/data/enemy_type.gd" id="2_et"]
+[ext_resource type="Script" path="res://scripts/data/status_application.gd" id="3_sa"]
+
+[sub_resource type="Resource" id="SA_0"]
+script = ExtResource("3_sa")
+kind = 3
+stacks = 1
+
+[sub_resource type="Resource" id="Move_0"]
+script = ExtResource("1_move")
+move_name = "Slosh"
+power = 5
+scaling_mult = 0.0
+inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
+
+[sub_resource type="Resource" id="SA_1"]
+script = ExtResource("3_sa")
+kind = 3
+stacks = 3
+
+[sub_resource type="Resource" id="Move_1"]
+script = ExtResource("1_move")
+move_name = "Scatter"
+power = 0
+scaling_mult = 0.0
+target_type = 1
+deals_damage = false
+cooldown = 1
+inflicts = Array[ExtResource("3_sa")]([SubResource("SA_1")])
+
+[resource]
+script = ExtResource("2_et")
+display_name = "Sloppy Altered"
+health = 120
+moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1")])
+ai = 1

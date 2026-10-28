@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="Mission" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mission.gd" id="1_m"]
+[ext_resource type="Script" path="res://scripts/data/enemy_wave.gd" id="2_wave"]
+[ext_resource type="Script" path="res://scripts/data/enemy_type.gd" id="3_et"]
+[ext_resource type="Resource" path="res://data/enemies/aggressive_altered.tres" id="e_aggressive_altered"]
+[ext_resource type="Resource" path="res://data/enemies/sloppy_altered.tres" id="e_sloppy_altered"]
+
+[sub_resource type="Resource" id="Wave_0"]
+script = ExtResource("2_wave")
+enemies = Array[ExtResource("3_et")]([ExtResource("e_sloppy_altered"), ExtResource("e_sloppy_altered"), ExtResource("e_sloppy_altered"), ExtResource("e_sloppy_altered")])
+
+[sub_resource type="Resource" id="Wave_1"]
+script = ExtResource("2_wave")
+enemies = Array[ExtResource("3_et")]([ExtResource("e_sloppy_altered"), ExtResource("e_sloppy_altered"), ExtResource("e_aggressive_altered"), ExtResource("e_aggressive_altered")])
+
+[resource]
+script = ExtResource("1_m")
+id = &"permulaan_baru"
+title = "Permulaan Baru"
+difficulty = "Tutorial"
+summary = "Helder's first job. A couple of Altered, and a lesson in how to fight."
+chapter_label = "Level 1 - Prologue"
+location = "STASIUN KERETA API TARAHAN, LAMPUNG"
+fragment_reward = 250
+waves = Array[ExtResource("2_wave")]([SubResource("Wave_0"), SubResource("Wave_1")])

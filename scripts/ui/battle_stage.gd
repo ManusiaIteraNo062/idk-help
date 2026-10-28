@@ -25,6 +25,7 @@ const ENEMY_COLOR := Color(0.85, 0.2, 0.2) # red, matches the reference art
 const DEFEATED_TINT := Color(0.3, 0.3, 0.3, 0.5)
 
 var _figures: Dictionary = {} # BattleUnit -> CharacterPlaceholder
+var _enemy_units: Array = []   # enemies currently on stage (replaced each wave)
 
 func _ready() -> void:
 	if not battle_manager:
@@ -32,6 +33,8 @@ func _ready() -> void:
 		return
 	_spawn_team(battle_manager.player_team, PLAYER_POSITIONS, PLAYER_COLOR)
 	_spawn_team(battle_manager.enemy_team, ENEMY_POSITIONS, ENEMY_COLOR)
+	_enemy_units = battle_manager.enemy_team.duplicate()
+	battle_manager.wave_started.connect(_on_wave_started)
 
 func _spawn_team(team: Array, positions: Array[Vector2], color: Color) -> void:
 	for i in range(team.size()):
@@ -51,6 +54,15 @@ func _spawn_team(team: Array, positions: Array[Vector2], color: Color) -> void:
 
 		_figures[unit] = figure
 		unit.defeated.connect(_on_unit_defeated)
+
+## A new wave arrived: remove the old enemy figures and place the new ones.
+func _on_wave_started(units: Array) -> void:
+	for u in _enemy_units:
+		if _figures.has(u):
+			_figures[u].queue_free()
+			_figures.erase(u)
+	_enemy_units = units.duplicate()
+	_spawn_team(units, ENEMY_POSITIONS, ENEMY_COLOR)
 
 func _on_unit_defeated(unit: BattleUnit) -> void:
 	if _figures.has(unit):

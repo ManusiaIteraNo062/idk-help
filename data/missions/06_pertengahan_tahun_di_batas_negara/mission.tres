@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="Mission" format=3]
+
+[ext_resource type="Script" path="res://scripts/data/mission.gd" id="1_m"]
+[ext_resource type="Script" path="res://scripts/data/enemy_wave.gd" id="2_wave"]
+[ext_resource type="Script" path="res://scripts/data/enemy_type.gd" id="3_et"]
+[ext_resource type="Resource" path="res://data/enemies/aggressive_altered.tres" id="e_aggressive_altered"]
+[ext_resource type="Resource" path="res://data/enemies/faraway_altered.tres" id="e_faraway_altered"]
+[ext_resource type="Resource" path="res://data/enemies/loud_altered.tres" id="e_loud_altered"]
+[ext_resource type="Resource" path="res://data/enemies/sloppy_altered.tres" id="e_sloppy_altered"]
+[ext_resource type="Resource" path="res://data/enemies/tough_altered.tres" id="e_tough_altered"]
+
+[sub_resource type="Resource" id="Wave_0"]
+script = ExtResource("2_wave")
+enemies = Array[ExtResource("3_et")]([ExtResource("e_tough_altered"), ExtResource("e_faraway_altered"), ExtResource("e_aggressive_altered"), ExtResource("e_loud_altered")])
+
+[sub_resource type="Resource" id="Wave_1"]
+script = ExtResource("2_wave")
+enemies = Array[ExtResource("3_et")]([ExtResource("e_sloppy_altered"), ExtResource("e_sloppy_altered"), ExtResource("e_aggressive_altered"), ExtResource("e_faraway_altered")])
+
+[sub_resource type="Resource" id="Wave_2"]
+script = ExtResource("2_wave")
+enemies = Array[ExtResource("3_et")]([ExtResource("e_tough_altered"), ExtResource("e_faraway_altered"), ExtResource("e_faraway_altered"), ExtResource("e_sloppy_altered")])
+
+[resource]
+script = ExtResource("1_m")
+id = &"pertengahan_tahun_di_batas_negara"
+title = "Pertengahan Tahun di Batas Negara"
+difficulty = "Standard"
+summary = "TODO: write summary (placeholder enemies)"
+chapter_label = "Misi 6"
+location = "MAHAKAM ULU, KALIMANTAN TIMUR"
+fragment_reward = 250
+waves = Array[ExtResource("2_wave")]([SubResource("Wave_0"), SubResource("Wave_1"), SubResource("Wave_2")])
