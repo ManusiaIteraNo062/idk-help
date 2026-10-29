@@ -17,6 +17,5 @@ static func lookup(speaker: String) -> Dictionary:
 		"Dean": {"color": Roster.DEAN_COLOR, "side": R},
 		"Admin": {"color": Roster.ADMIN_COLOR, "side": R},
 		"WYG-01": {"color": Roster.ADMIN_COLOR, "side": R},
-		"The Melodist": {"color": Color(0.8, 0.3, 0.45), "side": R},
 	}
 	return table.get(speaker, {"color": Color(0.6, 0.6, 0.6), "side": R})

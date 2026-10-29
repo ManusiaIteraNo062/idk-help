@@ -6,7 +6,7 @@ class_name MissionLibrary
 ##     mission.tres    title, location, reward, waves of enemies
 ##     intro.txt       dialogue before the battle
 ##     victory.txt     dialogue after a win
-##     defeat.txt      dialogue after a loss
+##     defeat.txt      dialogue after a loss (optional; falls back to data/defeat_default.txt)
 ##
 ## Folder names are sorted alphabetically = board order, so number them
 ## (01_, 02_, ... 10_). Adding a mission = adding a folder. No code changes.
@@ -17,6 +17,7 @@ class_name MissionLibrary
 
 const MISSIONS_DIR := "res://data/missions"
 const LOBBY_INTRO := "res://data/lobby/intro.txt"
+const DEFEAT_DEFAULT := "res://data/defeat_default.txt"
 
 static func build_all() -> Array[Mission]:
 	var out: Array[Mission] = []
@@ -42,6 +43,9 @@ static func _load_mission(dir: String) -> Mission:
 	m.intro_lines = DialogueParser.load_file(dir + "/intro.txt")
 	m.victory_lines = DialogueParser.load_file(dir + "/victory.txt")
 	m.defeat_lines = DialogueParser.load_file(dir + "/defeat.txt")
+	# No (or empty) defeat.txt in the folder -> the shared default scene.
+	if m.defeat_lines.is_empty() and m.wave_count() > 0:
+		m.defeat_lines = DialogueParser.load_file(DEFEAT_DEFAULT)
 	return m
 
 ## Lobby dialogue played on entering the lobby (first visit only for now).

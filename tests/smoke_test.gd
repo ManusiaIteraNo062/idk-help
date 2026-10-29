@@ -36,6 +36,8 @@ func _test_missions() -> void:
 			var e := m.build_wave(0)
 			_check("%s wave 0 builds enemies" % m.id, e.size() > 0)
 		_check("%s has intro" % m.id, m.intro_lines.size() > 0)
+		if m.wave_count() > 0:
+			_check("%s has defeat lines" % m.id, m.defeat_lines.size() > 0)
 		for l in m.intro_lines + m.victory_lines:
 			if l.text.length() > DialogueParser.MAX_CHARS + 120:
 				_check("%s line length" % m.id, false, str(l.text.length()))

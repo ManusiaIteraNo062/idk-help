@@ -1,0 +1,1 @@
+# Uses data/defeat_default.txt. Write your own lines here to override it for this mission.

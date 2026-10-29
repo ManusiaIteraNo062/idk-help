@@ -1,0 +1,5 @@
+# PLACEHOLDER - plays after a lost battle for every mission without its own defeat.txt.
+# Replace with your own lines, or give a mission its own defeat.txt.
+Dean: Mundur! Atur ulang formasi, kita coba lagi.
+Helder: M-maaf, Nona Dean... saya akan lebih berhati-hati kali ini.
+Radik: Tenang aja, Mbak Helda. Ronde kedua, kita gas.
