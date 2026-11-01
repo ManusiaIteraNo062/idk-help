@@ -55,31 +55,24 @@ static func make_enemy(unit_name: String, health: int, attack: int, capability: 
 	unit.moveset = make_moveset(moves)
 	return unit
 
-## Builds the party from the Roster, applying each character's equipped
-## weapon: its bonuses are added to the stats, and its name replaces the
-## Basic move's name. (GameState.load_or_new() guarantees valid equipment.)
-static func make_player_team(state: GameState) -> Array[BattleUnit]:
+## Builds the party from the Roster: stats include the active upgrade and the
+## worn equipment (GameState.stats_for), and the Alteration list is the
+## character's known skills (base skills + any learned in the workshop).
+## (GameState.load_or_new() guarantees valid equipment.)
+## `only` = Roster ids that take part (empty = the whole party).
+static func make_player_team(state: GameState, only: PackedStringArray = PackedStringArray()) -> Array[BattleUnit]:
 	var team: Array[BattleUnit] = []
 	for d in Roster.all():
-		var w: Weapon = state.weapon_for(d.id)
-		var unit := make_unit(
-			d.display_name,
-			d.health + w.bonus_health,
-			d.attack + w.bonus_attack,
-			d.capability + w.bonus_capability,
-			d.speed + w.bonus_speed
-		)
-		unit.basic_moves[0].move_name = w.basic_move_name
+		if not only.is_empty() and not d.id in only:
+			continue
+		var st := state.stats_for(d.id)
+		var unit := make_unit(d.display_name, st["health"], st["attack"], st["capability"], st["speed"])
+		unit.basic_moves[0].move_name = d.basic_name
 
-		for a in d.alterations:
-			var move := Move.new()
-			move.move_name = a["name"]
-			move.type = Move.Type.ALTERATION
-			move.energy_cost = a["cost"]
-			move.power = a["power"]
-			move.target_type = a["target"]
-			move.is_heal = a.get("heal", false)
-			unit.alteration_moves.append(move)
+		for skill in SkillLibrary.for_character(d.id):
+			if state.knows_skill(skill):
+				for move in skill.build_moves():
+					unit.alteration_moves.append(move)
 
 		team.append(unit)
 	return team

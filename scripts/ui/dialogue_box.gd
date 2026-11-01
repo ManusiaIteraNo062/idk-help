@@ -15,6 +15,10 @@ const BOX_HEIGHT := 200.0
 const BOX_MARGIN := 40.0
 const BOX_BOTTOM_GAP := 24.0
 const PORTRAIT_SIZE := 150.0
+const NAME_TAG_HEIGHT := 44.0   # the name tag straddles the box's top edge
+const TEXT_PAD_X := 36          # keeps text off the box walls
+const TEXT_PAD_TOP := 24
+const TEXT_PAD_BOTTOM := 14
 const CHARS_PER_SECOND := 55.0
 const INPUT_GRACE_MS := 150 # ignore input right after opening (stray clicks)
 
@@ -26,6 +30,9 @@ var _opened_at: int = 0
 var _tween: Tween
 
 var _name_label: Label
+var _name_tag: PanelContainer
+var _name_row: HBoxContainer
+var _italic_font: FontVariation
 var _text_label: RichTextLabel
 var _portrait_left: PanelContainer
 var _portrait_right: PanelContainer
@@ -57,19 +64,24 @@ func _build_layout() -> void:
 	add_child(panel)
 
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", 6)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	panel.add_child(col)
 
-	_name_label = Label.new()
-	_name_label.add_theme_font_size_override("font_size", 22)
-	col.add_child(_name_label)
+	# Slanted copy of the default font for narration/actions (the default font
+	# has no italic variant, so we skew it).
+	_italic_font = FontVariation.new()
+	_italic_font.variation_transform = Transform2D(Vector2(1.0, 0.0), Vector2(-0.25, 1.0), Vector2.ZERO)
 
 	_text_label = RichTextLabel.new()
-	_text_label.bbcode_enabled = false
+	_text_label.bbcode_enabled = true
 	_text_label.scroll_active = false
 	_text_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_text_label.add_theme_font_size_override("normal_font_size", 20)
+	_text_label.add_theme_font_size_override("normal_font_size", 21)
+	_text_label.add_theme_font_size_override("italics_font_size", 21)
+	_italic_font.base_font = _text_label.get_theme_font("normal_font") # same typeface as speech
+	_text_label.add_theme_font_override("italics_font", _italic_font)
+	_text_label.add_theme_constant_override("line_separation", 6)
 	_text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(_text_label)
 
@@ -80,8 +92,27 @@ func _build_layout() -> void:
 	hint.add_theme_font_size_override("font_size", 13)
 	col.add_child(hint)
 
-	# Portraits sit fully above the panel's top corners.
-	var portrait_y := panel_pos.y - PORTRAIT_SIZE - 8.0
+	# Small name tag straddling the top edge of the box, on the speaker's side.
+	_name_row = HBoxContainer.new()
+	_name_row.position = Vector2(BOX_MARGIN + 24.0, panel_pos.y - NAME_TAG_HEIGHT * 0.5)
+	_name_row.custom_minimum_size = Vector2(screen.x - (BOX_MARGIN + 24.0) * 2.0, NAME_TAG_HEIGHT)
+	_name_row.size = _name_row.custom_minimum_size
+	_name_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_row.visible = false
+	add_child(_name_row)
+
+	_name_tag = PanelContainer.new()
+	_name_tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_row.add_child(_name_tag)
+
+	_name_label = Label.new()
+	_name_label.add_theme_font_size_override("font_size", 22)
+	_name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_tag.add_child(_name_label)
+
+	# Portraits sit fully above the name tag.
+	var portrait_y := panel_pos.y - PORTRAIT_SIZE - NAME_TAG_HEIGHT * 0.5 - 12.0
 	_portrait_left = _make_portrait(Vector2(BOX_MARGIN + 24.0, portrait_y))
 	_portrait_right = _make_portrait(Vector2(screen.x - BOX_MARGIN - 24.0 - PORTRAIT_SIZE, portrait_y))
 
@@ -154,15 +185,29 @@ func _show_line() -> void:
 	var on_left := line.side == DialogueLine.Side.LEFT
 
 	_name_label.text = line.speaker
-	_name_label.visible = has_speaker
-	_name_label.add_theme_color_override("font_color", line.placeholder_color.lightened(0.35))
+	_name_row.visible = has_speaker
+	_name_row.alignment = BoxContainer.ALIGNMENT_BEGIN if on_left else BoxContainer.ALIGNMENT_END
+	var accent := line.placeholder_color.lightened(0.35)
+	_name_label.add_theme_color_override("font_color", accent)
+	var tag_style := StyleBoxFlat.new()
+	tag_style.bg_color = Color(0.06, 0.06, 0.06, 0.97)
+	tag_style.set_border_width_all(2)
+	tag_style.border_color = accent
+	tag_style.set_corner_radius_all(6)
+	tag_style.content_margin_left = 20
+	tag_style.content_margin_right = 20
+	tag_style.content_margin_top = 4
+	tag_style.content_margin_bottom = 4
+	_name_tag.add_theme_stylebox_override("panel", tag_style)
 
 	_portrait_left.visible = has_speaker and on_left
 	_portrait_right.visible = has_speaker and not on_left
 	if has_speaker:
 		_apply_portrait(_portrait_left if on_left else _portrait_right, line)
 
-	_text_label.text = line.text
+	# Narration / actions are italic and a little dimmer; speech is upright.
+	var safe := line.text.replace("[", "[lb]")
+	_text_label.text = safe if has_speaker else "[i][color=#d8d8d8]%s[/color][/i]" % safe
 	_text_label.visible_ratio = 0.0
 	_typing = true
 	if _tween:
@@ -219,5 +264,8 @@ func _rect_style(corner_radius: int) -> StyleBoxFlat:
 	style.set_border_width_all(3)
 	style.border_color = Color(1, 1, 1, 0.85)
 	style.set_corner_radius_all(corner_radius)
-	style.set_content_margin_all(16)
+	style.content_margin_left = TEXT_PAD_X
+	style.content_margin_right = TEXT_PAD_X
+	style.content_margin_top = TEXT_PAD_TOP
+	style.content_margin_bottom = TEXT_PAD_BOTTOM
 	return style

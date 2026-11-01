@@ -43,6 +43,9 @@ static func _load_mission(dir: String) -> Mission:
 	m.intro_lines = DialogueParser.load_file(dir + "/intro.txt")
 	m.victory_lines = DialogueParser.load_file(dir + "/victory.txt")
 	m.defeat_lines = DialogueParser.load_file(dir + "/defeat.txt")
+	m.tutorial_pages = TutorialPage.load_file(dir + "/tutorial.txt")
+	if m.title_background == null and ResourceLoader.exists(dir + "/title_bg.png"):
+		m.title_background = load(dir + "/title_bg.png")
 	# No (or empty) defeat.txt in the folder -> the shared default scene.
 	if m.defeat_lines.is_empty() and m.wave_count() > 0:
 		m.defeat_lines = DialogueParser.load_file(DEFEAT_DEFAULT)

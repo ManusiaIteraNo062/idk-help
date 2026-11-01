@@ -9,6 +9,8 @@ class_name Move
 
 enum Type { BASIC, ALTERATION }
 enum Target { SINGLE_ENEMY, ALL_ENEMIES, SINGLE_ALLY, ALL_ALLIES, SELF }
+## Which stat `scaling_mult` multiplies. AUTO = Strength for BASIC moves, Capability for ALTERATION.
+enum Stat { AUTO, STRENGTH, CAPABILITY, SPEED }
 
 @export var move_name: String = "Attack"
 @export var type: Type = Type.BASIC
@@ -78,3 +80,42 @@ enum Target { SINGLE_ENEMY, ALL_ENEMIES, SINGLE_ALLY, ALL_ALLIES, SELF }
 ## false = once per target per use, on the first hit that connects
 ## (Clawing: 2 hits, but only 2 Gloop in total).
 @export var inflicts_per_hit: bool = true
+
+# --- Player skill effects (Alteration port) --------------------------------
+
+@export var scaling_stat: Stat = Stat.AUTO
+
+## Heals the user for this % of ITS max HP when this move kills its target (Condemn: 10).
+@export var heal_self_on_kill_pct: float = 0.0
+## Gives the user this much energy when this move kills its target (Berandalan: 2).
+@export var energy_on_kill: int = 0
+## Heals the user this much, ONCE per use (Encompass: 15).
+@export var self_heal_flat: int = 0
+## Flat heal for is_heal moves: Capability * this, rounded up (Rejuvenate: 0.5).
+@export var heal_flat_per_cap: float = 0.0
+## Gives every target this much energy (Booster: 1, with target ALL_ALLIES).
+@export var grants_energy_allies: int = 0
+## The user counts as guarding after this move (Heroik, Overcome).
+@export var self_guard: bool = false
+## > 0: stun the target (1 turn) only if its HP fraction is below this BEFORE the hit (Javelin: 0.5).
+@export var stun_if_target_below_hp_pct: float = 0.0
+
+## Every number shown or dealt by player moves is rounded UP (e.g. 12.2 -> 13).
+## The tiny subtraction stops float noise (3.0000000000000004) from rounding to 4.
+static func round_up(x: float) -> int:
+	return ceili(x - 0.0001)
+
+## Damage of ONE hit for the given stats (before crit/Guard/Gloop/Time Dilation).
+## Single source of truth: BattleManager and the workshop preview both use it.
+func damage_per_hit(strength: int, capability: int, speed: int) -> int:
+	var stat: int
+	match scaling_stat:
+		Stat.STRENGTH:
+			stat = strength
+		Stat.CAPABILITY:
+			stat = capability
+		Stat.SPEED:
+			stat = speed
+		_:
+			stat = capability if type == Type.ALTERATION else strength
+	return maxi(1, round_up(power + stat * scaling_mult + speed * speed_mult))

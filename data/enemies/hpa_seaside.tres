@@ -53,3 +53,4 @@ health = 550
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1"), SubResource("Move_2")])
 ai = 2
 actions_per_turn = 2
+is_boss = true

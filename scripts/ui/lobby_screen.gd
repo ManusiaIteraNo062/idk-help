@@ -7,6 +7,7 @@ class_name LobbyScreen
 signal missions_pressed
 signal workshop_pressed
 signal training_pressed
+signal title_pressed
 
 var _fragments_label: Label
 var _missions_btn: Button
@@ -50,6 +51,7 @@ func _ready() -> void:
 	_missions_btn = _make_button(col, "Take a Mission", func(): missions_pressed.emit())
 	_workshop_btn = _make_button(col, "Admin's Workshop", func(): workshop_pressed.emit())
 	_training_btn = _make_button(col, "Training", func(): training_pressed.emit())
+	_make_button(col, "Main Menu", func(): title_pressed.emit())
 
 func _make_button(parent: Node, text: String, callback: Callable) -> Button:
 	var b := Button.new()

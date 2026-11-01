@@ -1,62 +1,98 @@
 extends RefCounted
 class_name GearLibrary
-## Every craftable weapon. Names/numbers are placeholders - edit freely.
-## Costs: tier 1 = 30 fragments, tier 2 = 80. (Mission rewards are in
-## MissionLibrary: 25 / 40 / 70 on first clear.)
+## Everything craftable with Shangri-La Fragments, except skills (SkillLibrary).
+## Costs: Upgrade 125, Equipment 50. Edit numbers freely.
 
-static var _cache: Array[Weapon] = []
+const SLOTS := 5            # equipment slots per character
+const UPGRADE_COST := 125
+const EQUIPMENT_COST := 50
 
-static func all() -> Array[Weapon]:
-	if _cache.is_empty():
-		_build()
-	return _cache
+static var _upgrades: Array[Upgrade] = []
+static var _equipment: Array[EquipmentItem] = []
 
-static func get_weapon(weapon_id: String) -> Weapon:
-	for w in all():
-		if w.id == weapon_id:
-			return w
+# ---- upgrades -----------------------------------------------------------
+
+static func upgrades() -> Array[Upgrade]:
+	if _upgrades.is_empty():
+		_build_upgrades()
+	return _upgrades
+
+static func get_upgrade(upgrade_id: String) -> Upgrade:
+	for u in upgrades():
+		if u.id == upgrade_id:
+			return u
 	return null
 
-## Weapons for one character, base weapon first, then by tier.
-static func for_character(character_id: String) -> Array[Weapon]:
-	var out: Array[Weapon] = []
-	for w in all():
-		if w.owner_id == character_id:
-			out.append(w)
-	out.sort_custom(func(a: Weapon, b: Weapon): return a.tier < b.tier)
+## One character's entries: base (no upgrade) first, then by tier.
+static func upgrades_for(character_id: String) -> Array[Upgrade]:
+	var out: Array[Upgrade] = []
+	for u in upgrades():
+		if u.owner_id == character_id:
+			out.append(u)
+	out.sort_custom(func(a: Upgrade, b: Upgrade): return a.tier < b.tier)
 	return out
 
-static func _build() -> void:
-	# make(id, name, owner, tier, cost, basic move name, +HP, +ATK, +CAP, +SPD, description)
+static func _build_upgrades() -> void:
+	# make(id, name, owner, tier, cost, +HP, +STR, +CAP, +SPD, flavor text)
+	# Bonus numbers are the old weapon-tier numbers, kept until you rebalance.
+	var base := "Perlengkapan bawaan, belum dimodifikasi."
 
-	# --- Helder: electric baton -------------------------------------------
-	_cache.append(Weapon.make("helder_baton", "Electric Baton", "helder", 0, 0, "Baton Strike",
-		0, 0, 0, 0, "Mid-range workshop baton powered by a Shangri-La Fragment."))
-	_cache.append(Weapon.make("helder_baton_2", "Reinforced Arc Baton", "helder", 1, 30, "Arc Strike",
-		0, 3, 2, 0, "Better conductors and a stronger core."))
-	_cache.append(Weapon.make("helder_baton_3", "Shangri-La Arc Baton", "helder", 2, 80, "Surge Strike",
-		10, 6, 4, 0, "A baton built around a full fragment. It hums when held."))
+	_upgrades.append(Upgrade.make("helder_baton", "Electric Baton", "helder", 0, 0, 0, 0, 0, 0, base))
+	_upgrades.append(Upgrade.make("helder_baton_2", "Reinforce Baton", "helder", 1, UPGRADE_COST, 0, 3, 2, 0,
+		"Setup extender untuk memperkuat rangka"))
+	_upgrades.append(Upgrade.make("helder_baton_3", "110% Charged Baton", "helder", 2, UPGRADE_COST, 10, 6, 4, 0,
+		"Meningkatkan output energi Baton"))
 
-	# --- Radik: custom parang ---------------------------------------------
-	_cache.append(Weapon.make("radik_parang", "Custom Parang", "radik", 0, 0, "Parang Slash",
-		0, 0, 0, 0, "Admin's custom blade. Splits into a blade and a throwing knife."))
-	_cache.append(Weapon.make("radik_parang_2", "Split-Edge Parang", "radik", 1, 30, "Split Slash",
-		0, 2, 0, 3, "Lighter and faster to separate."))
-	_cache.append(Weapon.make("radik_parang_3", "Fragment-Forged Parang", "radik", 2, 80, "Forged Slash",
-		0, 4, 0, 6, "Forged straight from fragments. Almost weightless."))
+	_upgrades.append(Upgrade.make("radik_parang", "Custom Parang", "radik", 0, 0, 0, 0, 0, 0, base))
+	_upgrades.append(Upgrade.make("radik_parang_2", "Polished Blade", "radik", 1, UPGRADE_COST, 0, 2, 0, 3,
+		"Menajamkan mata pisau dengan WDS-110"))
+	_upgrades.append(Upgrade.make("radik_parang_3", "Trifect Edge Orgast", "radik", 2, UPGRADE_COST, 0, 4, 0, 6,
+		"Modifikasi legal dengan menggunakan Blueprint ORK.Co"))
 
-	# --- Dean: baton and riot shield --------------------------------------
-	_cache.append(Weapon.make("dean_riot", "Baton & Riot Shield", "dean", 0, 0, "Baton Swing",
-		0, 0, 0, 0, "Anti-Altered riot gear, modified by Admin."))
-	_cache.append(Weapon.make("dean_riot_2", "Reinforced Riot Set", "dean", 1, 30, "Braced Swing",
-		20, 2, 0, 0, "Thicker plating, heavier swing."))
-	_cache.append(Weapon.make("dean_riot_3", "Anti-Altered Riot Set Mk II", "dean", 2, 80, "Breaker Swing",
-		40, 4, 0, 0, "Tuned to take hits from the worst of them."))
+	_upgrades.append(Upgrade.make("dean_riot", "Baton & Riot Shield", "dean", 0, 0, 0, 0, 0, 0, base))
+	_upgrades.append(Upgrade.make("dean_riot_2", "Armor Refitting", "dean", 1, UPGRADE_COST, 20, 2, 0, 0,
+		"Modifikasi simplistik dari model armor anggota T.N.D.B"))
+	_upgrades.append(Upgrade.make("dean_riot_3", "Energizer Core Mk2", "dean", 2, UPGRADE_COST, 40, 4, 0, 0,
+		"Menggunakan Core experimental yang dimaterialisasi Admin"))
 
-	# --- WYG-01: Admin's mechanoid ----------------------------------------
-	_cache.append(Weapon.make("wyg_frame", "WYG-01 Standard Frame", "wyg01", 0, 0, "Servo Strike",
-		0, 0, 0, 0, "Admin's field mechanoid, powered by a Shangri-La Fragment."))
-	_cache.append(Weapon.make("wyg_frame_2", "WYG-01 Servo Upgrade", "wyg01", 1, 30, "Piston Strike",
-		10, 0, 3, 0, "Sharper servos and a better power feed."))
-	_cache.append(Weapon.make("wyg_frame_3", "WYG-01 Fragment Core", "wyg01", 2, 80, "Core Strike",
-		20, 2, 6, 0, "A second fragment fitted into the chassis."))
+	_upgrades.append(Upgrade.make("wyg_frame", "WYG-01 Standard Frame", "wyg01", 0, 0, 0, 0, 0, 0, base))
+	_upgrades.append(Upgrade.make("wyg_frame_2", "Reinforced Body", "wyg01", 1, UPGRADE_COST, 10, 0, 3, 0,
+		"Menggunakan material permutasi untuk rangka robot"))
+	_upgrades.append(Upgrade.make("wyg_frame_3", "Shangri-la Knuckles", "wyg01", 2, UPGRADE_COST, 20, 2, 6, 0,
+		"Tinju yang dibuat dan dilapisi Fragment"))
+
+# ---- equipment ----------------------------------------------------------
+
+static func equipment() -> Array[EquipmentItem]:
+	if _equipment.is_empty():
+		_build_equipment()
+	return _equipment
+
+static func get_equipment(item_id: String) -> EquipmentItem:
+	for e in equipment():
+		if e.id == item_id:
+			return e
+	return null
+
+static func _build_equipment() -> void:
+	# make(id, name, +HP, +STR, +CAP, +SPD, flavor text) - cost is EQUIPMENT_COST for all.
+	_equipment.append(EquipmentItem.make("thin_barrier", "Thin-Barrier Forcefield", 30, 0, 0, 0,
+		"Perisai tipis anti-fisik dan anti-hujan oleh RTO.Co"))
+	_equipment.append(EquipmentItem.make("mev_equipment", "M.E.V Mandated Agent Equipment", 20, 5, 5, 0,
+		"Basic Equipment yang dikhususkan untuk Agen M.E.R"))
+	_equipment.append(EquipmentItem.make("gatotkaca", "Sepatu Enhancer \"Gatotkaca\"", 10, 10, 0, -5,
+		"Sepatu khusus tentara dari MB.Inc"))
+	_equipment.append(EquipmentItem.make("keotop", "Kalung Hypervent \"Keotop\"", 0, 0, 5, 10,
+		"Kalung dengan Fragment Shangri-la yang dibentuk ke permata Intan"))
+	_equipment.append(EquipmentItem.make("weapon_holder", "All-Universal Weapon Holder", 0, 10, 0, 0,
+		"Sarung senjata yang dapat berubah sesuai dengan senjata yang ditaruh"))
+	_equipment.append(EquipmentItem.make("glazen_hart", "A-Enh \"Glazen Hart\" by M.E.V", 25, 0, 10, 0,
+		"Shangri-la Fragment yang dibentuk menjadi penguat Alteration"))
+	_equipment.append(EquipmentItem.make("haven_aan_zee", "A-Enh \"Haven aan zee\" by Indo-mer", 0, 5, 10, 0,
+		"Medali yang dibentuk dari perak dengan simbol khas Betawi"))
+	_equipment.append(EquipmentItem.make("bima_sakti", "A-Enh \"Bima Sakti\" by Dunya.Corp", 20, 0, 10, 0,
+		"Tato tubuh yang bisa dilepas pasang dengan corak custom"))
+	_equipment.append(EquipmentItem.make("jamu_palapa", "Dimensional Bev - Jamu cap Palapa", -20, 0, 20, 5,
+		"Kantung Dimensional yang berisi Jamu Cabe"))
+	for e in _equipment:
+		e.cost = EQUIPMENT_COST

@@ -1,8 +1,8 @@
 extends RefCounted
 class_name Roster
-## The four playable characters from the GDD. Base stats and Alteration
-## numbers are PLACEHOLDERS (the GDD gives none). Equipment bonuses from
-## GearLibrary are added on top when the team is built (see UnitFactory).
+## The four playable characters from the GDD. Base stats are PLACEHOLDERS
+## (edit them here). Upgrade + equipment bonuses (GearLibrary) are added on
+## top when the team is built; skills come from SkillLibrary.
 
 const HELDER_COLOR := Color(0.3, 0.75, 0.8)
 const RADIK_COLOR := Color(0.95, 0.6, 0.25)
@@ -16,10 +16,9 @@ class Def:
 	var attack: int
 	var capability: int
 	var speed: int
-	var base_weapon_id: String
+	var base_upgrade_id: String   # the free "no upgrade" entry in GearLibrary
+	var basic_name: String        # name of the Basic attack
 	var color: Color
-	## Each entry: { name, cost, power, target (Move.Target), heal (optional bool) }
-	var alterations: Array = []
 
 ## Returns an Array of Roster.Def, in party order.
 static func all() -> Array:
@@ -32,9 +31,9 @@ static func all() -> Array:
 	helder.attack = 13
 	helder.capability = 10
 	helder.speed = 8
-	helder.base_weapon_id = "helder_baton"
+	helder.base_upgrade_id = "helder_baton"
+	helder.basic_name = "Drabo"
 	helder.color = HELDER_COLOR
-	helder.alterations = [{"name": "Arc Discharge", "cost": 3, "power": 22, "target": Move.Target.SINGLE_ENEMY}]
 	out.append(helder)
 
 	var radik := Def.new()
@@ -44,10 +43,10 @@ static func all() -> Array:
 	radik.attack = 12
 	radik.capability = 7
 	radik.speed = 16
-	radik.base_weapon_id = "radik_parang"
+	radik.base_upgrade_id = "radik_parang"
+	radik.basic_name = "Aparang"
 	radik.color = RADIK_COLOR
 	# Placeholder: per the GDD this should scale off Speed (combat code side).
-	radik.alterations = [{"name": "Blade Split", "cost": 2, "power": 16, "target": Move.Target.SINGLE_ENEMY}]
 	out.append(radik)
 
 	var dean := Def.new()
@@ -57,9 +56,9 @@ static func all() -> Array:
 	dean.attack = 14
 	dean.capability = 4
 	dean.speed = 5
-	dean.base_weapon_id = "dean_riot"
+	dean.base_upgrade_id = "dean_riot"
+	dean.basic_name = "Law & Order"
 	dean.color = DEAN_COLOR
-	dean.alterations = [{"name": "Riot Sweep", "cost": 2, "power": 18, "target": Move.Target.ALL_ENEMIES}]
 	out.append(dean)
 
 	var wyg := Def.new()
@@ -69,9 +68,9 @@ static func all() -> Array:
 	wyg.attack = 6
 	wyg.capability = 15
 	wyg.speed = 7
-	wyg.base_weapon_id = "wyg_frame"
+	wyg.base_upgrade_id = "wyg_frame"
+	wyg.basic_name = "Mech Fist"
 	wyg.color = ADMIN_COLOR
-	wyg.alterations = [{"name": "Repair Pulse", "cost": 3, "power": 20, "target": Move.Target.SINGLE_ALLY, "heal": true}]
 	out.append(wyg)
 
 	return out

@@ -15,6 +15,9 @@ class_name EnemyType
 @export var ai: EnemyMoveset.Mode = EnemyMoveset.Mode.PRIORITIZE_BIG
 ## Bosses act more than once per turn.
 @export var actions_per_turn: int = 1
+@export var is_boss: bool = false
+## Training dummies never act.
+@export var is_dummy: bool = false
 
 func build_unit() -> BattleUnit:
 	var move_list: Array[Move] = []
@@ -22,4 +25,6 @@ func build_unit() -> BattleUnit:
 	var unit := UnitFactory.make_enemy(display_name, health, 0, 0, speed, move_list)
 	unit.moveset.mode = ai
 	unit.actions_per_turn = actions_per_turn
+	unit.is_boss = is_boss
+	unit.is_dummy = is_dummy
 	return unit

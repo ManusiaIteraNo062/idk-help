@@ -28,6 +28,12 @@ const MAX_ENERGY := 5 # energy bar cap, same for every unit
 
 ## Enemy-only: how many moves it makes per turn (bosses = 2).
 @export var actions_per_turn: int = 1
+## Shown last (in gold) in the enemy list.
+@export var is_boss: bool = false
+## Training dummy: never attacks (it just stands there and takes hits).
+@export var is_dummy: bool = false
+## Training mode: the energy bar is always full and nothing costs energy.
+var infinite_energy: bool = false
 
 var current_health: int
 var current_energy: int = 0
@@ -49,14 +55,33 @@ func is_alive() -> bool:
 
 ## Attack including buffs. Use this instead of stats.attack in combat.
 func get_attack() -> int:
-	return stats.attack + magnitude_of(StatusDefs.Kind.STRENGTHEN)
+	return stats.attack + magnitude_of(StatusDefs.Kind.STRENGTHEN) + _bonus_from_statuses("strength")
+
+## Capability including buffs (Inj-ACB). Use this in combat, not stats.capability.
+func get_capability() -> int:
+	return stats.capability + _bonus_from_statuses("capability")
+
+func _bonus_from_statuses(which: String) -> int:
+	var total := 0
+	for kind in statuses:
+		var def := StatusDefs.get_def(kind)
+		var per: int = 0
+		match which:
+			"strength":
+				per = def.bonus_strength
+			"speed":
+				per = def.bonus_speed
+			"capability":
+				per = def.bonus_capability
+		total += per * (statuses[kind] as StatusInstance).stacks
+	return total
 
 ## Applies an ATTACK's damage and returns the actual amount dealt.
-## Order: +1 per Gloop stack, then halved by Guard, then halved by Time Dilation.
+## Order: +1 per 2 Gloop stacks (rounded down), then halved by Guard, then halved by Time Dilation.
 func take_damage(amount: int) -> int:
 	var final_amount := amount
 	if final_amount > 0:
-		final_amount += stacks_of(StatusDefs.Kind.GLOOP)
+		final_amount += stacks_of(StatusDefs.Kind.GLOOP) / 2
 	if is_guarding:
 		final_amount = int(final_amount * 0.5)
 	if has_status(StatusDefs.Kind.TIME_DILATION):
@@ -88,10 +113,16 @@ func heal(amount: int) -> void:
 
 ## Rule: filling the bar happens one point per turn taken, up to MAX_ENERGY.
 func gain_energy(amount: int = 1) -> void:
+	if infinite_energy:
+		current_energy = MAX_ENERGY
+		return
 	current_energy = min(MAX_ENERGY, current_energy + amount)
 	energy_changed.emit(self, current_energy)
 
 func spend_energy(amount: int) -> bool:
+	if infinite_energy:
+		current_energy = MAX_ENERGY
+		return true
 	if current_energy < amount:
 		return false
 	current_energy -= amount
@@ -119,7 +150,7 @@ func can_use_move(move: Move) -> bool:
 	if move.max_uses_per_battle > 0 and move_uses.get(move, 0) >= move.max_uses_per_battle:
 		return false
 	if move.type == Move.Type.ALTERATION:
-		return current_energy >= energy_cost_for(move)
+		return infinite_energy or current_energy >= energy_cost_for(move)
 	return true
 
 func reset_turn_flags() -> void:
@@ -127,8 +158,26 @@ func reset_turn_flags() -> void:
 
 ## Speed stat doubles as a flat dodge chance percentage (0-100),
 ## Darkest Dungeon-style. Rolled by the ATTACKER's target, not the attacker.
+## Speed including buffs (Swift). Dodge chance and Speed-scaling moves use this.
+func get_speed() -> int:
+	return maxi(0, stats.speed + magnitude_of(StatusDefs.Kind.SWIFT) + _bonus_from_statuses("speed"))
+
+## Energy waiting from an Energized status; called at the start of this unit's turn.
+func consume_energized() -> int:
+	var st: StatusInstance = statuses.get(StatusDefs.Kind.ENERGIZED)
+	if st == null:
+		return 0
+	var amount := st.magnitude
+	remove_status(StatusDefs.Kind.ENERGIZED)
+	return amount
+
+## Test hook: the next attacks on this unit are always dodged.
+var force_dodge: bool = false
+
 func roll_dodge() -> bool:
-	var chance: float = clamp(stats.speed, 0, 95) / 100.0
+	if force_dodge:
+		return true
+	var chance: float = clamp(get_speed(), 0, 95) / 100.0
 	return randf() < chance
 
 # ---- status effects -------------------------------------------------------
@@ -216,12 +265,37 @@ func tick_end_of_turn() -> void:
 			st.turns_left -= 1
 			if st.turns_left <= 0:
 				statuses.erase(kind)
+				# The crash after an injection wears off (never lethal).
+				if def.expire_self_damage_pct > 0.0:
+					var crash := Move.round_up(stats.max_health * def.expire_self_damage_pct / 100.0)
+					crash = mini(crash, current_health - 1)
+					if crash > 0:
+						take_true_damage(crash)
+						status_log.emit("%s crashes after %s and loses %d HP!" % [stats.character_name, def.label, crash])
 	statuses_changed.emit(self)
 
 func _clear_statuses() -> void:
 	if not statuses.is_empty():
 		statuses.clear()
 		statuses_changed.emit(self)
+
+## One line per active status for the "Status" popup, e.g. "Gloop x3  (2 turns)".
+func status_lines() -> PackedStringArray:
+	var out: PackedStringArray = []
+	for kind in statuses:
+		var st: StatusInstance = statuses[kind]
+		var def := StatusDefs.get_def(kind)
+		var t := def.label
+		if kind in [StatusDefs.Kind.STRENGTHEN, StatusDefs.Kind.SWIFT, StatusDefs.Kind.ENERGIZED]:
+			t += " +%d" % st.magnitude
+		elif st.stacks > 1:
+			t += " x%d" % st.stacks
+		if st.turns_left == StatusDefs.PERMANENT:
+			t += "  (whole mission)"
+		elif def.ticks_down:
+			t += "  (%d turn%s)" % [st.turns_left, "" if st.turns_left == 1 else "s"]
+		out.append(t)
+	return out
 
 ## Short HUD text, e.g. "Fire x2  Gloop x3  Strengthen +9". Empty if none.
 func status_text() -> String:
@@ -230,7 +304,7 @@ func status_text() -> String:
 		var st: StatusInstance = statuses[kind]
 		var def := StatusDefs.get_def(kind)
 		var t := def.label
-		if kind == StatusDefs.Kind.STRENGTHEN:
+		if kind in [StatusDefs.Kind.STRENGTHEN, StatusDefs.Kind.SWIFT, StatusDefs.Kind.ENERGIZED]:
 			t += " +%d" % st.magnitude
 		elif st.stacks > 1:
 			t += " x%d" % st.stacks

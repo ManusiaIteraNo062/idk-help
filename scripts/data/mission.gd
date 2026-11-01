@@ -15,6 +15,13 @@ class_name Mission
 ## (REPLAY_REWARD_RATIO in game_flow.gd).
 @export var fragment_reward: int = 20
 
+## Which characters take part (Roster ids, e.g. "helder", "radik"). Empty = everyone.
+@export var party_ids: PackedStringArray = []
+
+## Optional picture behind the title card. Empty = a plain placeholder background.
+## (Or just drop a title_bg.png into the mission folder and it is picked up.)
+@export var title_background: Texture2D
+
 ## Enemy groups, in order. The GDD wants 2 / 3 / 1 waves for the three levels;
 ## game_flow currently plays wave 0 only until multi-wave combat exists.
 @export var waves: Array[EnemyWave] = []
@@ -23,6 +30,7 @@ class_name Mission
 var intro_lines: Array[DialogueLine] = []   # before the battle
 var victory_lines: Array[DialogueLine] = [] # after a win
 var defeat_lines: Array[DialogueLine] = []  # after a loss
+var tutorial_pages: Array[TutorialPage] = []  # shown at the start of the battle (optional)
 
 func wave_count() -> int:
 	return waves.size()

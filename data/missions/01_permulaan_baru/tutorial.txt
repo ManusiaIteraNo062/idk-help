@@ -1,0 +1,14 @@
+# Tutorial shown at the start of this mission's battle (see TutorialPage for the format).
+# "> Device | explanation": device in English, explanation in Indonesian.
+Kontrol dan Aksi
+> Attack | Serangan biasa. Gratis dipakai, dan mengisi 1 energy.
+> Alteration | Kemampuan khusus yang jauh lebih kuat. Memakai energy.
+> Item | Memakai Heal, booster, dan barang lain dari tas.
+> Guard | Bersiap bertahan: damage berkurang dan kamu mendapat 1 energy di giliran berikutnya.
+> Panah / Mouse | Memilih menu.
+> Space / Enter / Klik kiri | Konfirmasi pilihan.
+> Esc / Klik kanan | Kembali satu langkah.
+---
+Cara Bertarung
+Saat bertarung, kamu bisa memilih aksi Attack untuk menyerang biasa, Item untuk menggunakan Heal, booster dan lain sebagainya, atau Guard untuk memasuki guard stance dan mengurangi damage yang diterima.
+Alteration adalah kemampuan kuat yang menggunakan energy bar, aksi yang ada di Alteration jauh lebih kuat dari biasa, namun butuh biaya energy untuk digunakan. Unit tidak mengisi energy bar ketika alteration digunakan untuk turn ini.

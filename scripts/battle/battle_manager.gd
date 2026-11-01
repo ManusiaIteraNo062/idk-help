@@ -19,6 +19,10 @@ signal player_turn_started(unit: BattleUnit, available_actions: Dictionary)
 signal enemy_turn_started(unit: BattleUnit)
 signal action_resolved(unit: BattleUnit, description: String)
 signal battle_ended(player_won: bool)
+## "Name used" strip: who did what ("Condemn", "Guard", an item name...).
+signal action_announced(user: BattleUnit, action_name: String)
+## An attack missed. Emitted for EVERY attack, damaging or not (the UI shows "Dodge!").
+signal attack_dodged(target: BattleUnit, attacker: BattleUnit)
 signal wave_started(units: Array) # a new group of enemies has just appeared (waves 2+)
 
 @export var player_team: Array[BattleUnit] = [] # up to 4 (rule 3)
@@ -36,9 +40,17 @@ var current_wave: int = 1 # 1-based, for display
 const CRIT_CHANCE := 1.0 / 14.0 # fixed for BOTH allies and enemies
 const CRIT_MULTIPLIER := 1.5
 
+## Training mode: infinite energy for the party, set before start_battle().
+## The battle only ends when abort_battle() is called (or someone falls).
+var training: bool = false
+
+## Instance copy so tests can force crits off (set to 0.0).
+var crit_chance: float = CRIT_CHANCE
+
 var _round_number: int = 0
 var _pending_action: Dictionary = {}
 var _waiting_for_player: bool = false
+var _stopped: bool = false # set by abort_battle(): the loop stops at its next step
 
 signal _player_action_submitted
 
@@ -47,6 +59,11 @@ func add_item(item: Item, quantity: int = 1) -> void:
 
 func start_battle() -> void:
 	_round_number = 0
+	if training:
+		for u in player_team:
+			u.infinite_energy = true
+			u.current_energy = BattleUnit.MAX_ENERGY
+			u.energy_changed.emit(u, u.current_energy)
 	# Statuses write their own log lines (applied / damage / broken).
 	for u in player_team + enemy_team:
 		_hook_unit(u)
@@ -73,7 +90,7 @@ func _run_battle_loop() -> void:
 			if not unit.is_alive():
 				continue
 			await _process_player_turn(unit)
-			if await _check_battle_over():
+			if _stopped or await _check_battle_over():
 				return
 
 		# Enemy team moves second.
@@ -81,7 +98,7 @@ func _run_battle_loop() -> void:
 			if not unit.is_alive():
 				continue
 			_process_enemy_turn(unit)
-			if await _check_battle_over():
+			if _stopped or await _check_battle_over():
 				return
 
 ## Returns what a unit is currently allowed to pick from. The UI should
@@ -109,8 +126,17 @@ func _finish_turn(unit: BattleUnit) -> void:
 	unit.tick_end_of_turn()
 	unit.tick_cooldowns()
 
+## Energy promised by an Energized status (Palesa - Stance "Heroik") arrives at
+## the very start of the unit's next turn.
+func _grant_stored_energy(unit: BattleUnit) -> void:
+	var stored := unit.consume_energized()
+	if stored > 0:
+		unit.gain_energy(stored)
+		battle_log.emit("%s gains %d Energy!" % [unit.stats.character_name, stored])
+
 func _process_player_turn(unit: BattleUnit) -> void:
 	unit.is_acting = true
+	_grant_stored_energy(unit)
 	if _consume_stun(unit):
 		_finish_turn(unit)
 		return
@@ -118,6 +144,8 @@ func _process_player_turn(unit: BattleUnit) -> void:
 	_waiting_for_player = true
 	await _player_action_submitted
 	_waiting_for_player = false
+	if _stopped:
+		return
 	_execute_action(unit, _pending_action)
 	_finish_turn(unit)
 
@@ -132,8 +160,22 @@ func submit_player_action(action_data: Dictionary) -> void:
 	_pending_action = action_data
 	_player_action_submitted.emit()
 
+## Leaves a training session (counts as a "win" so the flow just carries on).
+func abort_battle() -> void:
+	if _stopped:
+		return
+	_stopped = true
+	battle_log.emit("Training ended.")
+	battle_ended.emit(true)
+	if _waiting_for_player: # release the loop if it is waiting for a choice
+		_pending_action = {}
+		_player_action_submitted.emit()
+
 func _process_enemy_turn(unit: BattleUnit) -> void:
 	unit.is_acting = true
+	if unit.is_dummy:
+		_finish_turn(unit) # a dummy only stands there (burning still ticks)
+		return
 	if _consume_stun(unit):
 		_finish_turn(unit)
 		return
@@ -192,6 +234,14 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 	var type: String = action_data.get("type", "guard")
 	var targets: Array = action_data.get("targets", [])
 
+	# Tell the UI what was used (shown in the top-left "Name used" strip).
+	var shown: String = "Guard"
+	if action_data.has("move"):
+		shown = action_data["move"].move_name
+	elif action_data.has("item"):
+		shown = action_data["item"].item_name
+	action_announced.emit(unit, shown)
+
 	match type:
 		"enemy_move":
 			# Fixed-pattern enemy move: no Basic/Alteration split, no energy
@@ -215,23 +265,33 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 			_resolve_item(unit, action_data["item"], targets)
 			unit.gain_energy(1)
 		"guard":
+			# Guarding halves damage and grants an Energized effect: +1 Energy
+			# at the start of the unit's next turn.
 			unit.is_guarding = true
+			unit.add_status(StatusDefs.Kind.ENERGIZED, 1, 0, 1, false)
 			battle_log.emit("%s guards." % unit.stats.character_name)
-			unit.gain_energy(1)
 
 	action_resolved.emit(unit, "%s's turn resolved." % unit.stats.character_name)
 
 func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
-	# Statuses the user grants itself, once per use (Time Dilation, Flame Wings).
-	_apply_statuses(user, move.grants_self)
+	# Effects on the user, once per use: granted statuses (Time Dilation, Flame
+	# Wings, Strengthen, Energized...) and the guarding stance.
+	_apply_statuses(user, move.grants_self, user)
+	if move.self_guard:
+		user.is_guarding = true
 
-	# Self-buff (Oxypetalum - Strengthen): no dodge, no damage.
+	# Old-style self-buff (battle_demo's Strengthen): no dodge, no damage.
 	if move.buff_attack_flat != 0 or move.buff_attack_cap_mult != 0.0:
-		var gain: int = move.buff_attack_flat + int(user.stats.capability * move.buff_attack_cap_mult)
+		var gain: int = move.buff_attack_flat + Move.round_up(user.get_capability() * move.buff_attack_cap_mult)
 		user.add_status(StatusDefs.Kind.STRENGTHEN, 1, 0, gain, false)
 		battle_log.emit("%s uses %s, gaining %d Attack!" % [
 			user.stats.character_name, move.move_name, gain
 		])
+		return
+
+	# Pure self moves (Strengthen, Stance "Heroik", Stance "Kilau").
+	if move.target_type == Move.Target.SELF:
+		battle_log.emit("%s uses %s!" % [user.stats.character_name, move.move_name])
 		return
 
 	for target in targets:
@@ -239,18 +299,26 @@ func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
 			continue
 
 		if move.is_heal:
-			# Heals scale off Capability too - it's the "magic power" stat,
-			# and healing is a support Alteration.
+			# Heals: % of the TARGET's max HP (Field Heal), Capability-based flat
+			# (Rejuvenate), or the old flat power + Capability. Always rounded up.
 			var amount: int
 			if move.heal_pct_base > 0.0 or move.heal_pct_per_cap > 0.0:
-				# Percent of the TARGET's max HP (Supplication).
-				var pct: float = move.heal_pct_base + user.stats.capability * move.heal_pct_per_cap
-				amount = int(target.stats.max_health * pct / 100.0)
+				var pct: float = move.heal_pct_base + user.get_capability() * move.heal_pct_per_cap
+				amount = Move.round_up(target.stats.max_health * pct / 100.0)
+			elif move.heal_flat_per_cap > 0.0:
+				amount = Move.round_up(user.get_capability() * move.heal_flat_per_cap)
 			else:
-				amount = move.power + user.stats.capability
+				amount = move.power + user.get_capability()
 			target.heal(amount)
 			battle_log.emit("%s uses %s, healing %s for %d HP!" % [
 				user.stats.character_name, move.move_name, target.stats.character_name, amount
+			])
+			continue
+
+		if move.grants_energy_allies > 0:
+			target.gain_energy(move.grants_energy_allies)
+			battle_log.emit("%s uses %s: %s gains %d Energy!" % [
+				user.stats.character_name, move.move_name, target.stats.character_name, move.grants_energy_allies
 			])
 			continue
 
@@ -263,6 +331,11 @@ func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
 			var connected := _resolve_hit(user, move, target, move.inflicts_per_hit or not landed)
 			landed = landed or connected
 
+	# Once-per-use heal for the user (Encompass).
+	if move.self_heal_flat > 0:
+		user.heal(move.self_heal_flat)
+		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, move.self_heal_flat])
+
 ## One damaging hit: dodge -> damage (+crit) -> lifesteal -> execute -> stun.
 ## Returns true if the hit connected (was not dodged).
 func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit, apply_inflicts: bool = true) -> bool:
@@ -270,21 +343,22 @@ func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit, apply_inflic
 		battle_log.emit("%s dodges %s's %s!" % [
 			target.stats.character_name, user.stats.character_name, move.move_name
 		])
+		attack_dodged.emit(target, user)
 		if move.effects_ignore_dodge:
 			_apply_hit_statuses(move, target, apply_inflicts)
 		return false
 
-	# BASIC = physical, scales off Attack (including buffs). ALTERATION =
-	# magic/special, scales off Capability. This applies to enemy
-	# fixed-pattern moves too - Move.type just means "physical or magical".
+	# Javelin: the "below 50% HP" check uses the HP the target had BEFORE this hit.
+	var stun_by_low_hp := move.stun_if_target_below_hp_pct > 0.0 \
+		and float(target.current_health) / float(target.stats.max_health) < move.stun_if_target_below_hp_pct
+
 	var dealt: int = 0
 	if move.deals_damage:
-		var scaling_stat: int = user.stats.capability if move.type == Move.Type.ALTERATION else user.get_attack()
-		var raw: int = max(1, int(move.power + scaling_stat * move.scaling_mult + user.stats.speed * move.speed_mult))
+		var raw: int = move.damage_per_hit(user.get_attack(), user.get_capability(), user.get_speed())
 
-		var is_crit := randf() < CRIT_CHANCE # fixed 1-in-14 for allies AND enemies
+		var is_crit := randf() < crit_chance # fixed 1-in-14 for allies AND enemies
 		if is_crit:
-			raw = int(raw * CRIT_MULTIPLIER)
+			raw = Move.round_up(raw * CRIT_MULTIPLIER)
 
 		dealt = target.take_damage(raw)
 		battle_log.emit("%s uses %s on %s for %d damage!%s" % [
@@ -292,38 +366,50 @@ func _resolve_hit(user: BattleUnit, move: Move, target: BattleUnit, apply_inflic
 			" (CRITICAL!)" if is_crit else ""
 		])
 	else:
-		# No-damage move (Secure): it connected, but only side effects follow.
+		# No-damage move (Secure, Encompass): it connected, only side effects follow.
 		battle_log.emit("%s uses %s on %s!" % [
 			user.stats.character_name, move.move_name, target.stats.character_name
 		])
 
-	# Lifesteal (Absorption): heals the damage actually dealt.
+	# Lifesteal (Absorption): heals a share of the damage actually dealt.
 	if move.lifesteal > 0.0 and dealt > 0:
-		var healed := int(dealt * move.lifesteal)
+		var healed := Move.round_up(dealt * move.lifesteal)
 		user.heal(healed)
 		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, healed])
 
-	# Execute (Condemn): checked AFTER the damage lands, ignores Guard.
+	# Execute (old Condemn): checked AFTER the damage lands, ignores Guard.
 	if move.execute_base > 0 and target.is_alive():
-		var threshold: float = move.execute_base + user.stats.capability * move.execute_per_cap
+		var threshold: float = move.execute_base + user.get_capability() * move.execute_per_cap
 		if target.current_health < threshold:
 			target.kill()
 			battle_log.emit("%s is condemned!" % target.stats.character_name)
 
-	# Stun (Backhand) and `inflicts` statuses (Gloop, Fire...): only land if the
-	# hit connected and the target lived.
+	# Kill rewards: Condemn heals the user, Berandalan refunds energy.
+	if dealt > 0 and not target.is_alive():
+		if move.heal_self_on_kill_pct > 0.0:
+			var kill_heal := Move.round_up(user.stats.max_health * move.heal_self_on_kill_pct / 100.0)
+			user.heal(kill_heal)
+			battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, kill_heal])
+		if move.energy_on_kill > 0:
+			user.gain_energy(move.energy_on_kill)
+			battle_log.emit("%s regains %d Energy!" % [user.stats.character_name, move.energy_on_kill])
+
+	# Stun (Backhand, Enchain, Overcome) and `inflicts` statuses (Gloop, Fire...):
+	# only land if the hit connected and the target lived.
 	_apply_hit_statuses(move, target, apply_inflicts)
+	if stun_by_low_hp and target.is_alive():
+		target.add_status(StatusDefs.Kind.STUN, 1, 1)
+
+	# On-hit self-heal (Secure): Capability/125 of the user's max HP.
+	if move.self_heal_max_hp_per_cap > 0.0:
+		var self_healed := Move.round_up(user.stats.max_health * user.get_capability() * move.self_heal_max_hp_per_cap)
+		user.heal(self_healed)
+		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, self_healed])
 
 	# Flame Wings: whoever connects with the holder catches a stack of Fire.
 	if target.has_status(StatusDefs.Kind.FLAME_WINGS):
 		user.add_status(StatusDefs.Kind.FIRE)
 	return true
-
-	# On-hit self-heal (Secure): Capability/125 of the user's max HP.
-	if move.self_heal_max_hp_per_cap > 0.0:
-		var self_healed := int(user.stats.max_health * user.stats.capability * move.self_heal_max_hp_per_cap)
-		user.heal(self_healed)
-		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, self_healed])
 
 ## Stun + the move's `inflicts` list, applied to one target.
 func _apply_hit_statuses(move: Move, target: BattleUnit, with_inflicts: bool = true) -> void:
@@ -332,12 +418,16 @@ func _apply_hit_statuses(move: Move, target: BattleUnit, with_inflicts: bool = t
 	if move.stun_turns > 0:
 		target.add_status(StatusDefs.Kind.STUN, 1, move.stun_turns)
 	if with_inflicts:
-		_apply_statuses(target, move.inflicts)
+		_apply_statuses(target, move.inflicts, null)
 
-func _apply_statuses(unit: BattleUnit, applications: Array) -> void:
+## `source` is the unit using the move; it supplies the Capability for magnitude_per_cap.
+func _apply_statuses(unit: BattleUnit, applications: Array, source: BattleUnit = null) -> void:
 	for a in applications:
 		if a:
-			unit.add_status(a.kind, a.stacks, a.duration, a.magnitude)
+			var magnitude: int = a.magnitude
+			if source != null and a.magnitude_per_cap > 0.0:
+				magnitude += Move.round_up(source.get_capability() * a.magnitude_per_cap)
+			unit.add_status(a.kind, a.stacks, a.duration, magnitude)
 
 func _resolve_item(user: BattleUnit, item: Item, targets: Array) -> void:
 	if party_inventory.get(item, 0) <= 0:
@@ -347,16 +437,25 @@ func _resolve_item(user: BattleUnit, item: Item, targets: Array) -> void:
 	for target in targets:
 		if not is_instance_valid(target):
 			continue
+		# Percent items heal a share of the TARGET's max HP; old flat items use heal_amount.
+		var amount: int = item.heal_amount
+		if item.heal_pct > 0.0:
+			amount = Move.round_up(target.stats.max_health * item.heal_pct / 100.0)
 		if item.revive and not target.is_alive():
-			target.current_health = int(target.stats.max_health * 0.5)
+			target.current_health = clampi(amount, 1, target.stats.max_health)
 			target.hp_changed.emit(target, target.current_health)
 			battle_log.emit("%s uses %s to revive %s!" % [
 				user.stats.character_name, item.item_name, target.stats.character_name
 			])
 		elif target.is_alive():
-			target.heal(item.heal_amount)
-			battle_log.emit("%s uses %s on %s, healing %d HP!" % [
-				user.stats.character_name, item.item_name, target.stats.character_name, item.heal_amount
+			if amount > 0:
+				target.heal(amount)
+			if item.energy_gain > 0:
+				target.gain_energy(item.energy_gain)
+			for b in item.buffs:
+				target.add_status(b.kind, b.stacks, b.duration, b.magnitude)
+			battle_log.emit("%s uses %s on %s!" % [
+				user.stats.character_name, item.item_name, target.stats.character_name
 			])
 
 ## Returns true when the whole battle is over. Clearing a wave that is not the

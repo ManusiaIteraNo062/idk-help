@@ -25,6 +25,11 @@ var _state: GameState
 var _missions: Array[Mission] = []
 var _busy: bool = false # blocks input while a transition/sequence runs
 
+## Where the save lives. Tests point this at a temp file; leave it alone otherwise.
+var save_path: String = GameState.SAVE_PATH
+
+var _tutorial: TutorialBox
+var _title: TitleScreen
 var _lobby: LobbyScreen
 var _board: MissionBoard
 var _workshop: WorkshopScreen
@@ -37,10 +42,18 @@ var _battle_won: bool = false
 var _battle_done: bool = false
 
 func _ready() -> void:
-	_state = GameState.load_or_new()
+	_state = GameState.load_or_new(save_path)
 	_missions = MissionLibrary.build_all()
 
+	_title = TitleScreen.new()
+	_title.total_missions = _missions.size()
+	_title.continue_pressed.connect(_on_continue)
+	_title.new_game_pressed.connect(_on_new_game)
+	_title.quit_pressed.connect(func(): get_tree().quit())
+	add_child(_title)
+
 	_lobby = LobbyScreen.new()
+	_lobby.title_pressed.connect(func(): _switch_to(_title))
 	_lobby.missions_pressed.connect(func(): _switch_to(_board))
 	_lobby.workshop_pressed.connect(func(): _switch_to(_workshop))
 	_lobby.training_pressed.connect(_on_training_pressed)
@@ -66,17 +79,18 @@ func _ready() -> void:
 	layer.add_child(_dialogue)
 	_rewards = RewardPopup.new()
 	layer.add_child(_rewards)
+	_tutorial = TutorialBox.new()
+	layer.add_child(_tutorial)
 
 	_fader = ScreenFader.new()
 	add_child(_fader)
 
-	_show_only(_lobby)
-	await _play_lobby_story()
+	_show_only(_title)
 
 # ---------------------------------------------------------------- screens
 
 func _show_only(screen) -> void:
-	for s in [_lobby, _board, _workshop]:
+	for s in [_title, _lobby, _board, _workshop]:
 		s.visible = false
 	screen.refresh(_state)
 	screen.visible = true
@@ -91,6 +105,25 @@ func _switch_to(screen) -> void:
 	await _fader.fade_in(0.25)
 	_busy = false
 
+## Title > Continue: straight to the lobby with the saved progress.
+func _on_continue() -> void:
+	if _busy:
+		return
+	_state = GameState.load_or_new(save_path)
+	await _switch_to(_lobby)
+	await _play_lobby_story()
+
+## Title > New Game (already confirmed): wipe the save, start from zero, and
+## go straight into the first mission. Afterwards the lobby plays its intro.
+func _on_new_game() -> void:
+	if _busy or _missions.is_empty():
+		return
+	GameState.delete_save(save_path)
+	_state = GameState.load_or_new(save_path) # fresh defaults, no file
+	_state.save()
+	await _on_mission_selected(_missions[0])
+	await _play_lobby_story()
+
 func _play_lobby_story() -> void:
 	var lines := MissionLibrary.lobby_visit_lines(_state)
 	if lines.is_empty():
@@ -101,13 +134,31 @@ func _play_lobby_story() -> void:
 	_state.save()
 	_busy = false
 
+## Training: the normal battle screen against two dummies, with the energy bar
+## always full. No story, no rewards, and items used are not spent.
 func _on_training_pressed() -> void:
 	if _busy:
 		return
 	_busy = true
-	# Placeholder until Training mode exists.
-	await _dialogue.play([DialogueLine.make("", "Training mode isn't built yet.")])
+	await _fader.fade_out(0.4)
+	for s in [_title, _lobby, _board, _workshop]:
+		s.visible = false
+	await _run_battle(_make_training_mission(), true)
+	_show_only(_lobby)
+	await _fader.fade_in(0.4)
 	_busy = false
+
+## Two Training Dummies (data/enemies/training_dummy.tres) in one wave.
+func _make_training_mission() -> Mission:
+	var dummy: EnemyType = load("res://data/enemies/training_dummy.tres")
+	var wave := EnemyWave.new()
+	wave.enemies.append(dummy)
+	wave.enemies.append(dummy)
+	var m := Mission.new()
+	m.id = &"training"
+	m.title = "Training"
+	m.waves.append(wave)
+	return m
 
 # ---------------------------------------------------------------- missions
 
@@ -118,14 +169,14 @@ func _on_mission_selected(mission: Mission) -> void:
 
 	# 1) Into the story: black -> title card -> reveal under the dialogue.
 	await _fader.fade_out(0.4)
-	for s in [_lobby, _board, _workshop]:
+	for s in [_title, _lobby, _board, _workshop]:
 		s.visible = false
 	var sub_parts: PackedStringArray = []
 	if mission.chapter_label != "":
 		sub_parts.append(mission.chapter_label)
 	if mission.location != "":
 		sub_parts.append(mission.location)
-	await _fader.title_card(mission.title, "  -  ".join(sub_parts), 1.8)
+	await _fader.title_card(mission.title, "  -  ".join(sub_parts), 1.8, mission.title_background)
 
 	# 2) Pre-battle cutscene (fade-in runs while the dialogue starts).
 	_fader.fade_in(0.5)
@@ -165,7 +216,7 @@ func _give_rewards(mission: Mission) -> void:
 
 ## Builds a fresh battle under the black screen, reveals it, waits for the
 ## result, fades out, tears it down. Returns true if the player won.
-func _run_battle(mission: Mission) -> bool:
+func _run_battle(mission: Mission, training: bool = false) -> bool:
 	_battle_root = Node.new()
 	_battle_root.name = "Battle"
 	add_child(_battle_root)
@@ -175,7 +226,8 @@ func _run_battle(mission: Mission) -> bool:
 
 	var bm := BattleManager.new()
 	bm.name = "BattleManager"
-	bm.player_team = UnitFactory.make_player_team(_state)
+	bm.training = training
+	bm.player_team = UnitFactory.make_player_team(_state, mission.party_ids)
 
 	var enemies: Array[BattleUnit] = []
 	enemies.assign(mission.build_wave(0))
@@ -183,7 +235,7 @@ func _run_battle(mission: Mission) -> bool:
 	bm.wave_count = mission.wave_count()
 	bm.wave_factory = func(i: int): return mission.build_wave(i)
 
-	_give_starting_items(bm)
+	_load_inventory(bm)
 
 	bm.battle_ended.connect(func(player_won: bool):
 		_battle_won = player_won
@@ -200,34 +252,40 @@ func _run_battle(mission: Mission) -> bool:
 
 	var ui := BattleUI.new()
 	ui.battle_manager = bm
+	var show_tutorial := not training and not mission.tutorial_pages.is_empty()
+	ui.autostart = not show_tutorial # a tutorial shows first, then begin()
 	_battle_root.add_child(ui)
 
 	var stage := BattleStage.new()
 	stage.battle_manager = bm
-	stage.position = Vector2(600, 220)
 	_battle_root.add_child(stage)
 
 	await _fader.fade_in(0.4)
+	if show_tutorial:
+		await _tutorial.play(mission.tutorial_pages)
+		ui.begin()
 	if not _battle_done: # (it could, in theory, already be over)
 		await _battle_finished
 	# Let the player read the last log lines ("Victory!" / "defeated...").
 	await get_tree().create_timer(1.8).timeout
 	await _fader.fade_out(0.5)
 
+	if _battle_won and not training:
+		_save_inventory(bm)
 	_battle_root.queue_free()
 	_battle_root = null
 	return _battle_won
 
-func _give_starting_items(bm: BattleManager) -> void:
-	var potion := Item.new()
-	potion.item_name = "Potion"
-	potion.heal_amount = 40
-	potion.description = "Restores 40 HP."
-	bm.add_item(potion, 3)
+## Items crafted in the workshop go into the battle.
+func _load_inventory(bm: BattleManager) -> void:
+	for item in ItemLibrary.all():
+		var n := _state.item_count(item.id)
+		if n > 0:
+			bm.add_item(item, n)
 
-	var phoenix_down := Item.new()
-	phoenix_down.item_name = "Phoenix Down"
-	phoenix_down.heal_amount = 0
-	phoenix_down.revive = true
-	phoenix_down.description = "Revives a fallen ally at 50% HP."
-	bm.add_item(phoenix_down, 1)
+## After a WIN, whatever was used stays used. After a loss nothing is spent,
+## so the player can retry with the same supplies.
+func _save_inventory(bm: BattleManager) -> void:
+	for item in ItemLibrary.all():
+		_state.inventory[item.id] = clampi(int(bm.party_inventory.get(item, 0)), 0, ItemLibrary.MAX_STACK)
+	_state.save()

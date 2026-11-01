@@ -33,7 +33,6 @@ func _ready() -> void:
 
 	var stage := preload("res://scripts/ui/battle_stage.gd").new()
 	stage.battle_manager = battle_manager
-	stage.position = Vector2(600, 220) # nudged up to clear the bottom UI bands
 	add_child(stage)
 
 # ---------------------------------------------------------------------------
