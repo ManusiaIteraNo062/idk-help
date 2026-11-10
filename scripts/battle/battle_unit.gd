@@ -32,6 +32,7 @@ const MAX_ENERGY := 5 # energy bar cap, same for every unit
 @export var is_boss: bool = false
 ## Training dummy: never attacks (it just stands there and takes hits).
 @export var is_dummy: bool = false
+var enemy_id: String = ""   # EnemyType file name (encyclopedia); empty for the party
 ## Training mode: the energy bar is always full and nothing costs energy.
 var infinite_energy: bool = false
 
@@ -46,9 +47,27 @@ var statuses: Dictionary = {}      # StatusDefs.Kind -> StatusInstance
 var is_acting: bool = false        # true while it is this unit's turn (set by BattleManager)
 var cooldowns: Dictionary = {}     # Move -> turns until it is usable again
 
+## Upgrade passive for this battle (set by UnitFactory from the equipped upgrade):
+## a StatusDefs.Kind (or -1 for none) and its setting (see StatusDefs).
+var passive_kind: int = -1
+var passive_value: int = 0
+var turns_taken: int = 0   # this unit's own turns so far (Beringin counts them)
+
 func _ready() -> void:
 	if stats:
 		current_health = stats.max_health
+	# "Mulai battle dengan efek ...": the passive starts with the battle (0 stacks).
+	if passive_kind >= 0:
+		add_status(passive_kind, 0, 0, passive_value, false)
+
+## Strike with Sakepeng / Resonance: +1 stack, up to the cap stored in magnitude.
+func gain_passive_stack(kind: StatusDefs.Kind) -> bool:
+	var st: StatusInstance = statuses.get(kind)
+	if st == null or st.stacks >= st.magnitude:
+		return false
+	st.stacks += 1
+	statuses_changed.emit(self)
+	return true
 
 func is_alive() -> bool:
 	return current_health > 0
@@ -283,18 +302,15 @@ func _clear_statuses() -> void:
 func status_lines() -> PackedStringArray:
 	var out: PackedStringArray = []
 	for kind in statuses:
+		out.append(StatusDefs.title(kind, statuses[kind]))
+	return out
+
+## [ [title, description], ... ] for the hover popup.
+func status_details() -> Array:
+	var out: Array = []
+	for kind in statuses:
 		var st: StatusInstance = statuses[kind]
-		var def := StatusDefs.get_def(kind)
-		var t := def.label
-		if kind in [StatusDefs.Kind.STRENGTHEN, StatusDefs.Kind.SWIFT, StatusDefs.Kind.ENERGIZED]:
-			t += " +%d" % st.magnitude
-		elif st.stacks > 1:
-			t += " x%d" % st.stacks
-		if st.turns_left == StatusDefs.PERMANENT:
-			t += "  (whole mission)"
-		elif def.ticks_down:
-			t += "  (%d turn%s)" % [st.turns_left, "" if st.turns_left == 1 else "s"]
-		out.append(t)
+		out.append([StatusDefs.title(kind, st), StatusDefs.describe(kind, st)])
 	return out
 
 ## Short HUD text, e.g. "Fire x2  Gloop x3  Strengthen +9". Empty if none.

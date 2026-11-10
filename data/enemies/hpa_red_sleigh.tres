@@ -16,6 +16,7 @@ kind = 6
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Peace to All"
+description = "Waktu melambat untuknya, gloop untuk semua orang"
 power = 0
 scaling_mult = 0.0
 target_type = 1
@@ -26,6 +27,7 @@ grants_self = Array[ExtResource("3_sa")]([SubResource("SA_1")])
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Thrashing"
+description = "Mengamuk dua kali ke seluruh party"
 power = 6
 scaling_mult = 0.0
 hits = 2
@@ -35,6 +37,7 @@ cooldown = 2
 [sub_resource type="Resource" id="Move_2"]
 script = ExtResource("1_move")
 move_name = "Clockwatch"
+description = "Menghentikan waktu satu target"
 power = 10
 scaling_mult = 0.0
 stun_turns = 1
@@ -49,6 +52,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_3"]
 script = ExtResource("1_move")
 move_name = "Trumpet"
+description = "Meniup terompet yang menguras Energy seluruh party"
 power = 0
 scaling_mult = 0.0
 target_type = 1

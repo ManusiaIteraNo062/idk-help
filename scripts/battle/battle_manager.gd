@@ -21,6 +21,8 @@ signal action_resolved(unit: BattleUnit, description: String)
 signal battle_ended(player_won: bool)
 ## "Name used" strip: who did what ("Condemn", "Guard", an item name...).
 signal action_announced(user: BattleUnit, action_name: String)
+## An enemy shows up (battle start or a new wave): the encyclopedia remembers it.
+signal enemy_met(unit: BattleUnit)
 ## An attack missed. Emitted for EVERY attack, damaging or not (the UI shows "Dodge!").
 signal attack_dodged(target: BattleUnit, attacker: BattleUnit)
 signal wave_started(units: Array) # a new group of enemies has just appeared (waves 2+)
@@ -43,6 +45,9 @@ const CRIT_MULTIPLIER := 1.5
 ## Training mode: infinite energy for the party, set before start_battle().
 ## The battle only ends when abort_battle() is called (or someone falls).
 var training: bool = false
+
+## Test hook: a fixed 0-100 roll for Verlichting (negative = real randomness).
+var proc_roll_override: float = -1.0
 
 ## Instance copy so tests can force crits off (set to 0.0).
 var crit_chance: float = CRIT_CHANCE
@@ -67,9 +72,15 @@ func start_battle() -> void:
 	# Statuses write their own log lines (applied / damage / broken).
 	for u in player_team + enemy_team:
 		_hook_unit(u)
+	_announce_enemies(enemy_team)
 	if wave_count > 1:
 		battle_log.emit("=== Wave 1 of %d ===" % wave_count)
 	_run_battle_loop()
+
+func _announce_enemies(units: Array) -> void:
+	for u in units:
+		if u.enemy_id != "" and not u.is_dummy:
+			enemy_met.emit(u)
 
 func _hook_unit(u: BattleUnit) -> void:
 	u.status_log.connect(func(text: String): battle_log.emit(text))
@@ -134,8 +145,29 @@ func _grant_stored_energy(unit: BattleUnit) -> void:
 		unit.gain_energy(stored)
 		battle_log.emit("%s gains %d Energy!" % [unit.stats.character_name, stored])
 
+## Upgrade passives that fire when the unit uses Strike (the Attack action).
+func _on_strike(unit: BattleUnit) -> void:
+	if unit.has_status(StatusDefs.Kind.VERLICHTING):
+		var chance := float(unit.magnitude_of(StatusDefs.Kind.VERLICHTING))
+		var roll := proc_roll_override if proc_roll_override >= 0.0 else randf() * 100.0
+		if roll < chance:
+			unit.add_status(StatusDefs.Kind.ENERGIZED, 1, 0, 1, false)
+			battle_log.emit("%s: Verlichting! Energized +1." % unit.stats.character_name)
+	for kind in [StatusDefs.Kind.SAKEPENG, StatusDefs.Kind.RESONANCE]:
+		if unit.gain_passive_stack(kind):
+			battle_log.emit("%s: %s grows." % [unit.stats.character_name, StatusDefs.get_def(kind).label])
+
+## Beringin: +1 Energy at the start of every Nth turn of this unit.
+func _beringin_tick(unit: BattleUnit) -> void:
+	unit.turns_taken += 1
+	var every := unit.magnitude_of(StatusDefs.Kind.BERINGIN)
+	if every > 0 and unit.turns_taken % every == 0:
+		unit.add_status(StatusDefs.Kind.ENERGIZED, 1, 0, 1, false)
+		battle_log.emit("%s: Beringin restores energy." % unit.stats.character_name)
+
 func _process_player_turn(unit: BattleUnit) -> void:
 	unit.is_acting = true
+	_beringin_tick(unit) # before the stored energy is collected, so it arrives right now
 	_grant_stored_energy(unit)
 	if _consume_stun(unit):
 		_finish_turn(unit)
@@ -252,6 +284,7 @@ func _execute_action(unit: BattleUnit, action_data: Dictionary) -> void:
 			# Basic moves are free, and using one still fills the bar (rule 6).
 			_resolve_move(unit, action_data["move"], targets)
 			unit.gain_energy(1)
+			_on_strike(unit)
 		"alteration":
 			var move: Move = action_data["move"]
 			if unit.can_use_move(move) and unit.spend_energy(unit.energy_cost_for(move)):
@@ -488,6 +521,7 @@ func _spawn_next_wave() -> void:
 		_hook_unit(u)
 		get_parent().add_child(u) # so _ready sets its HP
 	battle_log.emit("=== Wave %d of %d ===" % [current_wave, wave_count])
+	_announce_enemies(typed)
 	wave_started.emit(typed)
 
 ## Test hook: resolves one hit and returns the HP the target lost.

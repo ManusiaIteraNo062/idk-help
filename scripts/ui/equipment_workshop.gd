@@ -199,10 +199,15 @@ func _build_upgrades() -> void:
 	var equipped_id := _state.equipped_id(_selected_id)
 	for u in GearLibrary.upgrades_for(_selected_id):
 		var text := "%s   (%s)\n%s" % [u.display_name, u.bonus_text(), u.description]
+		if u.effect_text != "":
+			text += "\n" + u.effect_text
 		if u.id == equipped_id:
 			_row(text, "Equipped", true, Callable())
 		elif _state.owns(u.id):
 			_row(text, "Equip", false, func(): _on_equip_upgrade(u))
+		elif not _state.upgrade_unlocked(u):
+			var need := GearLibrary.previous_upgrade(u)
+			_row(text + "\nTerkunci: beli %s dulu." % need.display_name, "Locked", true, Callable())
 		else:
 			_row(text, "Craft (%d)" % u.cost, not _state.can_afford(u.cost), func(): _on_craft_upgrade(u))
 

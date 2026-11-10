@@ -19,6 +19,8 @@ static func make_unit(unit_name: String, health: int, attack: int, capability: i
 	strike.move_name = "Strike"
 	strike.type = Move.Type.BASIC
 	strike.power = 6
+	strike.description = "Serangan biasa. Gratis dipakai, dan mengisi 1 energy."
+	strike.formula = "Damage = 6 + Strength."
 	strike.target_type = Move.Target.SINGLE_ENEMY
 	unit.basic_moves.append(strike)
 
@@ -68,6 +70,10 @@ static func make_player_team(state: GameState, only: PackedStringArray = PackedS
 		var st := state.stats_for(d.id)
 		var unit := make_unit(d.display_name, st["health"], st["attack"], st["capability"], st["speed"])
 		unit.basic_moves[0].move_name = d.basic_name
+		var up := state.upgrade_for(d.id)
+		if up != null and up.passive_kind >= 0:
+			unit.passive_kind = up.passive_kind     # applied when the battle starts (BattleUnit._ready)
+			unit.passive_value = up.passive_value
 
 		for skill in SkillLibrary.for_character(d.id):
 			if state.knows_skill(skill):

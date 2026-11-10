@@ -9,18 +9,17 @@ signal back_pressed
 
 var missions: Array[Mission] = []
 
+var _scroll: ScrollContainer
 var _list: VBoxContainer
 var _footer: Label
 var _back_btn: Button
 var _next_btn: Button # the first unlocked, not-yet-cleared mission
 
 func _ready() -> void:
-	var screen := get_viewport_rect().size
-	position = Vector2.ZERO
-	size = screen
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var center := CenterContainer.new()
-	center.size = screen
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 
 	var panel := PanelContainer.new()
@@ -38,9 +37,18 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 32)
 	col.add_child(title)
 
+	# 13+ missions don't fit on screen: the list scrolls (mouse wheel, or just move
+	# the cursor down with the arrow keys). Its height follows the window.
+	_scroll = ScrollContainer.new()
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.follow_focus = true
+	col.add_child(_scroll)
 	_list = VBoxContainer.new()
 	_list.add_theme_constant_override("separation", 10)
-	col.add_child(_list)
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(_list)
+	_fit_scroll()
+	get_viewport().size_changed.connect(_fit_scroll)
 
 	_footer = Label.new()
 	_footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -52,6 +60,16 @@ func _ready() -> void:
 	_back_btn.custom_minimum_size = Vector2(0, 48)
 	_back_btn.pressed.connect(func(): back_pressed.emit())
 	col.add_child(_back_btn)
+
+## Waits one frame for the list to be laid out, then scrolls so the cursor is visible.
+func _scroll_to(btn: Control) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(btn) and is_instance_valid(_scroll):
+		_scroll.ensure_control_visible(btn)
+
+func _fit_scroll() -> void:
+	var h := get_viewport_rect().size.y
+	_scroll.custom_minimum_size = Vector2(0, clampf(h - 250.0, 220.0, 760.0))
 
 func refresh(state: GameState) -> void:
 	_next_btn = null
@@ -87,6 +105,7 @@ func refresh(state: GameState) -> void:
 func focus_first() -> void:
 	if _next_btn and is_instance_valid(_next_btn):
 		_next_btn.grab_focus()
+		_scroll_to.call_deferred(_next_btn) # the layout isn't ready yet on the first frame
 		return
 	for c in _list.get_children():
 		if c is Button and not c.disabled:

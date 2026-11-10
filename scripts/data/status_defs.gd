@@ -11,7 +11,8 @@ class_name StatusDefs
 ##     (grace), so "grants X next turn" really lasts through the next round.
 ##   * PERMANENT (-1) lasts the whole fight.
 
-enum Kind { FIRE, POISON, STUN, GLOOP, SAPPED, STRENGTHEN, TIME_DILATION, FLAME_WINGS, ENERGIZED, SWIFT, INJ_CQB, INJ_ACB }
+enum Kind { FIRE, POISON, STUN, GLOOP, SAPPED, STRENGTHEN, TIME_DILATION, FLAME_WINGS, ENERGIZED, SWIFT, INJ_CQB, INJ_ACB,
+	VERLICHTING, SAKEPENG, BERINGIN, RESONANCE }
 
 const PERMANENT := -1
 
@@ -71,3 +72,69 @@ static func _build() -> void:
 	acb.bonus_capability = 15
 	acb.expire_self_damage_pct = 10.0
 	_defs[Kind.INJ_ACB] = acb
+	# Upgrade passives (the 2nd / last upgrade of each character), active the whole mission.
+	# `magnitude` carries the setting: Verlichting = chance %, Sakepeng/Resonance = max stacks,
+	# Beringin = every N turns.
+	_defs[Kind.VERLICHTING] = Def.new("Verlichting", true, 1, PERMANENT)
+	var sake := Def.new("Sakepeng", true, 99, PERMANENT)
+	sake.bonus_speed = 2     # per stack
+	_defs[Kind.SAKEPENG] = sake
+	_defs[Kind.BERINGIN] = Def.new("Beringin", true, 1, PERMANENT)
+	var reso := Def.new("Resonance", true, 99, PERMANENT)
+	reso.bonus_capability = 3 # per stack
+	_defs[Kind.RESONANCE] = reso
+
+## The "what does this do" text shown when hovering a status in battle,
+## with the real numbers for this unit (stacks, turns left, magnitude).
+static func describe(kind: Kind, st: StatusInstance) -> String:
+	var def := get_def(kind)
+	var turns := st.turns_left
+	var turn_text := "Lasts %d turn%s." % [turns, "" if turns == 1 else "s"]
+	match kind:
+		Kind.FIRE:
+			return "Turn End: take %d fixed damage (%d per stack). Removed afterwards." % [def.dot_per_stack * st.stacks, def.dot_per_stack]
+		Kind.POISON:
+			return "Turn End: take %d fixed damage (%d per stack). %s" % [def.dot_per_stack * st.stacks, def.dot_per_stack, turn_text]
+		Kind.STUN:
+			return "Cannot act on the next turn."
+		Kind.GLOOP:
+			return "Attacks against this unit deal +%d damage (+1 per 2 stacks). %s" % [st.stacks / 2, turn_text]
+		Kind.SAPPED:
+			return "Alteration skills cost +1 Energy. Expires at turn end."
+		Kind.STRENGTHEN:
+			return "+%d Strength until the mission ends." % st.magnitude
+		Kind.TIME_DILATION:
+			return "Takes 50%% less damage. Removed when stunned. %s" % turn_text
+		Kind.FLAME_WINGS:
+			return "Attackers gain 1 Fire when they hit this unit. Expires at turn end."
+		Kind.ENERGIZED:
+			return "Gain %d Energy at the start of the next turn." % st.magnitude
+		Kind.SWIFT:
+			return "+%d Speed (and dodge chance) until the mission ends." % st.magnitude
+		Kind.INJ_CQB:
+			return "+5 Speed and +10 Strength. %s Then lose 10%% of max HP." % turn_text
+		Kind.INJ_ACB:
+			return "+15 Capability. %s Then lose 10%% of max HP." % turn_text
+		Kind.VERLICHTING:
+			return "Strike: %d%% chance to gain 1 Energized (+1 Energy next turn)." % st.magnitude
+		Kind.SAKEPENG:
+			return "Each Strike adds a stack (max %d). +2 Speed per stack (now +%d)." % [st.magnitude, 2 * st.stacks]
+		Kind.BERINGIN:
+			return "Gain 1 Energy at the start of every %d turns." % st.magnitude
+		Kind.RESONANCE:
+			return "Each Strike adds a stack (max %d). +3 Capability per stack (now +%d)." % [st.magnitude, 3 * st.stacks]
+	return ""
+
+## "Gloop x3", "Strengthen +3", "Sakepeng x2/5"... plus turns left where it matters.
+static func title(kind: Kind, st: StatusInstance) -> String:
+	var def := get_def(kind)
+	var t := def.label
+	if kind in [Kind.STRENGTHEN, Kind.SWIFT, Kind.ENERGIZED]:
+		t += " +%d" % st.magnitude
+	elif kind in [Kind.SAKEPENG, Kind.RESONANCE]:
+		t += "  %d / %d" % [st.stacks, st.magnitude]
+	elif st.stacks > 1:
+		t += " x%d" % st.stacks
+	if def.ticks_down and st.turns_left != PERMANENT:
+		t += "   (%d turn%s)" % [st.turns_left, "" if st.turns_left == 1 else "s"]
+	return t

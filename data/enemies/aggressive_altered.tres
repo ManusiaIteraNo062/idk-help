@@ -12,6 +12,7 @@ stacks = 2
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Clawing"
+description = "Mencakar dua kali ke satu target"
 power = 3
 scaling_mult = 0.0
 hits = 2
@@ -26,6 +27,7 @@ stacks = 3
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Hewing"
+description = "Membacok keras satu target"
 power = 8
 scaling_mult = 0.0
 cooldown = 1

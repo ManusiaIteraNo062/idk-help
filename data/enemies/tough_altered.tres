@@ -7,12 +7,14 @@
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Shove"
+description = "Mendorong satu target dengan bahu raksasa"
 power = 7
 scaling_mult = 0.0
 
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Ram"
+description = "Menyeruduk dan menghantam seluruh party"
 power = 5
 scaling_mult = 0.0
 target_type = 1

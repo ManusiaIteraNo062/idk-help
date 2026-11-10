@@ -22,6 +22,7 @@ var equipped: Dictionary = {}       # character id -> the ONE active upgrade id
 var gear_owned: Dictionary = {}     # character id -> { equipment id -> true }
 var gear_equipped: Dictionary = {}  # character id -> Array of equipment ids (max GearLibrary.SLOTS)
 var skills_learned: Dictionary = {} # skill id -> true (only unlockable skills need this)
+var enemies_seen: Dictionary = {}   # enemy id (EnemyType file name) -> true; bosses show in the encyclopedia once met
 var inventory: Dictionary = {}      # item id -> count carried into battles (max ItemLibrary.MAX_STACK)
 var seen_lobby_intro: bool = false
 
@@ -60,9 +61,14 @@ func upgrade_for(character_id: String) -> Upgrade:
 			u = GearLibrary.get_upgrade(def.base_upgrade_id)
 	return u
 
+## Tier 1 is open from the start; tier 2 needs tier 1 to be owned first.
+func upgrade_unlocked(u: Upgrade) -> bool:
+	var need := GearLibrary.previous_upgrade(u)
+	return need == null or owns(need.id)
+
 ## Spends fragments, adds the upgrade, and equips it (it replaces the old one).
 func buy_upgrade(u: Upgrade) -> bool:
-	if owns(u.id) or not can_afford(u.cost):
+	if owns(u.id) or not upgrade_unlocked(u) or not can_afford(u.cost):
 		return false
 	fragments -= u.cost
 	owned[u.id] = true
@@ -137,6 +143,18 @@ func learn_skill(skill: Skill) -> bool:
 		return false
 	fragments -= skill.cost
 	skills_learned[skill.id] = true
+	return true
+
+# ---- enemy encyclopedia ----------------------------------------------------
+
+func has_met(enemy_id: String) -> bool:
+	return enemies_seen.has(enemy_id)
+
+## Returns true the first time this enemy is seen.
+func mark_enemy_seen(enemy_id: String) -> bool:
+	if enemy_id == "" or enemies_seen.has(enemy_id):
+		return false
+	enemies_seen[enemy_id] = true
 	return true
 
 # ---- items (Preparation) --------------------------------------------------
@@ -214,6 +232,7 @@ func save(path: String = "") -> void:
 		"gear_equipped": gear_equipped,
 		"skills_learned": skills_learned.keys(),
 		"inventory": inventory,
+		"enemies_seen": enemies_seen.keys(),
 		"seen_lobby_intro": seen_lobby_intro,
 	}
 	var f := FileAccess.open(path, FileAccess.WRITE)
@@ -265,6 +284,8 @@ func _apply(d: Dictionary) -> void:
 			gear_equipped[str(k)] = list
 	for id in d.get("skills_learned", []):
 		skills_learned[str(id)] = true
+	for id in d.get("enemies_seen", []):
+		enemies_seen[str(id)] = true
 	var inv = d.get("inventory", {})
 	if inv is Dictionary:
 		for k in inv:

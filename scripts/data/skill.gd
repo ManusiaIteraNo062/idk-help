@@ -21,6 +21,10 @@ var preview: Callable           # (stats: Dictionary) -> String, optional
 func build_moves() -> Array[Move]:
 	var out: Array[Move] = []
 	out.assign(builder.call())
+	for m in out:
+		m.description = summary
+		m.formula = formula
+		m.skill_id = id
 	return out
 
 ## "Saat ini: ..." line using the character's current stats (base + upgrade + equipment).

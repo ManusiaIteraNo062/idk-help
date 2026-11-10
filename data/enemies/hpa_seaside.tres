@@ -12,6 +12,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Needle"
+description = "Menusuk satu target dengan jarum beracun"
 power = 5
 scaling_mult = 0.0
 inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
@@ -24,6 +25,7 @@ stacks = 5
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Gloop Grapple"
+description = "Mencengkeram satu target dengan gloop tebal"
 power = 3
 scaling_mult = 0.0
 stun_turns = 1
@@ -38,6 +40,7 @@ stacks = 2
 [sub_resource type="Resource" id="Move_2"]
 script = ExtResource("1_move")
 move_name = "Lashing"
+description = "Mencambuk seluruh party tiga kali"
 power = 2
 scaling_mult = 0.0
 hits = 3

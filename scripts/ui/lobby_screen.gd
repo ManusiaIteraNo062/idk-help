@@ -7,20 +7,20 @@ class_name LobbyScreen
 signal missions_pressed
 signal workshop_pressed
 signal training_pressed
+signal encyclopedia_pressed
 signal title_pressed
 
 var _fragments_label: Label
 var _missions_btn: Button
 var _workshop_btn: Button
 var _training_btn: Button
+var _encyclopedia_btn: Button
 
 func _ready() -> void:
-	var screen := get_viewport_rect().size
-	position = Vector2.ZERO
-	size = screen
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 
 	var center := CenterContainer.new()
-	center.size = screen
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 
 	var panel := PanelContainer.new()
@@ -51,6 +51,7 @@ func _ready() -> void:
 	_missions_btn = _make_button(col, "Take a Mission", func(): missions_pressed.emit())
 	_workshop_btn = _make_button(col, "Admin's Workshop", func(): workshop_pressed.emit())
 	_training_btn = _make_button(col, "Training", func(): training_pressed.emit())
+	_encyclopedia_btn = _make_button(col, "Enemy Encyclopedia", func(): encyclopedia_pressed.emit())
 	_make_button(col, "Main Menu", func(): title_pressed.emit())
 
 func _make_button(parent: Node, text: String, callback: Callable) -> Button:

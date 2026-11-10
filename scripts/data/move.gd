@@ -119,3 +119,7 @@ func damage_per_hit(strength: int, capability: int, speed: int) -> int:
 		_:
 			stat = capability if type == Type.ALTERATION else strength
 	return maxi(1, round_up(power + stat * scaling_mult + speed * speed_mult))
+
+# --- Shown in the battle menu when hovering the move ----------------------
+@export var formula: String = ""                 # the damage / effect calculation
+var skill_id: String = ""                        # which SkillLibrary skill built it (for the live preview)

@@ -33,6 +33,8 @@ func _init() -> void:
 	_test_misc_requests()
 	await _test_tutorial_box()
 	await _test_tutorial_in_flow()
+	_test_upgrades_and_passives()
+	await _test_feedback_batch()
 	print("\n", "ALL PASSED" if _fails == 0 else "%d FAILED" % _fails)
 	quit(1 if _fails > 0 else 0)
 
@@ -201,10 +203,11 @@ func _test_enemy_data() -> void:
 	_check("Ram cooldown 2 = Shove, Shove, Ram, Shove", seq == ["Shove", "Shove", "Ram", "Shove"], str(seq))
 	# Fixed damage: Shove hits for exactly 7 (crit = 10).
 	var bm := BattleManager.new()
+	bm.crit_chance = 0.0
 	var shove: Move = tough.moveset.moves[0]
 	var hero := _unit(1000)
 	var dmg := bm._resolve_hit_for_test(tough, shove, hero)
-	_check("Shove deals fixed 7 (or 10 on crit)", dmg == 7 or dmg == 10, str(dmg))
+	_check("Shove deals a fixed 7", dmg == 7, str(dmg))
 	# Boss RANDOM: only ever picks off-cooldown moves.
 	var boss := _enemy("hpa_seaside")
 	boss.start_cooldown(boss.moveset.moves[2])
@@ -333,7 +336,7 @@ func _test_gear_state() -> void:
 	_check("base stats come from Roster", base["health"] == d.health and base["attack"] == d.attack)
 
 	var up := GearLibrary.get_upgrade("helder_baton_2")
-	_check("upgrade costs 125 and equips", st.buy_upgrade(up) and st.fragments == 1875 and st.equipped_id("helder") == "helder_baton_2")
+	_check("upgrade costs 100 and equips", st.buy_upgrade(up) and st.fragments == 1900 and st.equipped_id("helder") == "helder_baton_2")
 	_check("upgrade adds stats", st.stats_for("helder")["attack"] == d.attack + up.bonus_strength)
 	_check("upgrade does not rename Basic attack", UnitFactory.make_player_team(st)[0].basic_moves[0].move_name == "Drabo")
 	_check("equipping base entry removes the upgrade", st.equip_upgrade("helder", "helder_baton") and st.stats_for("helder")["attack"] == d.attack)
@@ -345,7 +348,10 @@ func _test_gear_state() -> void:
 	for i in 6:
 		st.buy_gear("helder", items[i])
 	_check("5 slots: 6th item owned but not worn", st.gear_slots_used("helder") == 5 and st.owns_gear("helder", items[5].id) and not st.is_gear_equipped("helder", items[5].id))
-	_check("equipment costs 50 each", st.fragments == 2000 - 6 * 50)
+	var paid := 0
+	for i in 6:
+		paid += items[i].cost
+	_check("equipment is charged at each item's own price", st.fragments == 2000 - paid, str(st.fragments))
 	_check("no stacking: can't buy twice", not st.buy_gear("helder", items[0]))
 	_check("each character owns their own copy", not st.owns_gear("radik", items[0].id) and st.buy_gear("radik", items[0]))
 	_check("can't equip with slots full", not st.equip_gear("helder", items[5].id))
@@ -551,7 +557,7 @@ func _test_workshop_ui() -> void:
 	_check("Learning from the UI spends 75", st.fragments == 425 and st.skills_learned.has("h_rejuvenate"))
 	ws._mode = EquipmentWorkshop.Mode.EQUIPMENT
 	ws._on_craft_gear(GearLibrary.get_equipment("keotop"))
-	_check("Crafting from the UI spends 50 and wears it", st.fragments == 375 and st.is_gear_equipped("helder", "keotop"))
+	_check("Crafting from the UI spends the item's price (75) and wears it", st.fragments == 350 and st.is_gear_equipped("helder", "keotop"), str(st.fragments))
 
 	var prep: PreparationWorkshop = hub._prep
 	prep.refresh(st)
@@ -647,7 +653,7 @@ func _test_items() -> void:
 	w.add_status(K.INJ_ACB)
 	var boosted := _find_move(w, "Cannon (2 Energy)").damage_per_hit(w.get_attack(), w.get_capability(), w.get_speed())
 	_check("Inj-ACB raises Capability-scaled damage", boosted > base_hit)
-	_check("status_lines lists statuses with turns left", w.status_lines().size() == 1 and w.status_lines()[0].contains("Inj-ACB") and w.status_lines()[0].contains("3 turns"), str(w.status_lines()))
+	_check("status_lines lists statuses with turns left", w.status_lines().size() == 1 and w.status_lines()[0].contains("Inj-ACB") and w.status_lines()[0].contains("3 turn"), str(w.status_lines()))
 	_cleanup(a)
 
 func _test_battle_ui() -> void:
@@ -685,8 +691,11 @@ func _test_battle_ui() -> void:
 	team[1].add_status(StatusDefs.Kind.POISON, 1)
 	await process_frame
 	_check("UI: Status tab appears for an afflicted ally", ui._party_cells[team[1]]["tab"].visible)
-	_check("UI: the Status list has one line per status", ui._party_cells[team[1]]["popup_lines"].get_child_count() == 2)
+	var pop_lines: VBoxContainer = ui._party_cells[team[1]]["popup_lines"]
+	_check("UI: the Status popup explains each status (title + description)", pop_lines.get_child_count() == 6 and pop_lines.get_child(0).text.begins_with("Gloop") and pop_lines.get_child(1).text.contains("damage"), str(pop_lines.get_child_count()))
 	_check("UI: Attack list shows Helder's basic move", ui._move_list.get_child_count() == 1 and ui._move_list.get_child(0).text == "Drabo")
+	ui._move_list.get_child(0).grab_focus() # (what hovering / arrow keys do)
+	_check("UI: the right box describes the hovered move", ui._info_scroll.visible and ui._target_title.text == "Drabo" and ui._info_body.text.contains("Serangan biasa") and ui._info_body.text.contains("Saat ini"), ui._info_body.text)
 
 	team[0].current_energy = 5
 	ui._on_player_turn(team[0], bm.get_available_actions(team[0]))
@@ -694,14 +703,16 @@ func _test_battle_ui() -> void:
 	_check("UI: Alteration list shows all 5 of Helder's skills", ui._move_list.get_child_count() == 5)
 	for b in ui._move_list.get_children():
 		if b.text.begins_with("Condemn"):
+			b.grab_focus()
 			b.pressed.emit()
 	await process_frame
-	_check("UI: single-target move shows 4 enemy buttons in a 2-column grid", ui._target_grid.get_child_count() == 4 and ui._target_grid.columns == 2)
+	_check("UI: single-target move shows 4 enemy buttons in a 2-column grid", ui._target_grid.get_child_count() == 4 and ui._target_grid.columns == 2 and ui._target_grid.visible and not ui._info_scroll.visible)
 	_check("UI: Target menu shows a marker over the first enemy", seen["markers"] >= 1)
 	_check("UI: Esc backs out of target selection", ui._on_cancel.is_valid())
 	ui._on_cancel.call()
 	await process_frame
 	_check("UI: target panel is empty after backing out", ui._target_grid.get_child_count() == 0)
+	_check("UI: the move's description comes back after backing out", ui._info_scroll.visible and ui._target_title.text == "Condemn" and ui._info_body.text.contains("Hitungan"), ui._target_title.text)
 
 	var before := foes[0].current_health
 	ui._on_category_pressed("alteration")
@@ -957,6 +968,213 @@ func _test_tutorial_in_flow() -> void:
 	flow._tutorial.finished.emit()
 	await create_timer(0.4).timeout
 	_check("Flow: closing the tutorial starts the battle", not flow._tutorial.visible and bm._round_number == 1)
+	_check("Flow: enemies met in a battle are remembered", flow._state.has_met("sloppy_altered") and not flow._state.has_met("aggressive_altered"))
 	flow.queue_free()
 	await process_frame
 	GameState.delete_save(path)
+
+func _test_upgrades_and_passives() -> void:
+	# +30% (rounded up) and a little HP on every upgrade; 100 each; tier 2 needs tier 1.
+	var table := {
+		"helder_baton_2": [8, 4, 3, 0], "helder_baton_3": [13, 8, 6, 0],
+		"radik_parang_2": [8, 3, 0, 4], "radik_parang_3": [16, 6, 0, 8],
+		"dean_riot_2": [26, 3, 0, 0], "dean_riot_3": [52, 6, 0, 0],
+		"wyg_frame_2": [13, 0, 4, 0], "wyg_frame_3": [26, 3, 8, 0]}
+	for id in table:
+		var u := GearLibrary.get_upgrade(id)
+		var want: Array = table[id]
+		_check("upgrade %s: HP/STR/CAP/SPD %s, costs 100" % [id, str(want)],
+			[u.bonus_health, u.bonus_strength, u.bonus_capability, u.bonus_speed] == want and u.cost == 100)
+	var st := GameState.new()
+	st.ensure_defaults()
+	st.fragments = 1000
+	var t2 := GearLibrary.get_upgrade("helder_baton_3")
+	_check("Tier 2 is locked until tier 1 is owned", not st.upgrade_unlocked(t2) and not st.buy_upgrade(t2) and st.fragments == 1000)
+	_check("Tier 1 is open from the start", st.upgrade_unlocked(GearLibrary.get_upgrade("helder_baton_2")))
+	st.buy_upgrade(GearLibrary.get_upgrade("helder_baton_2"))
+	_check("After tier 1, tier 2 can be crafted", st.upgrade_unlocked(t2) and st.buy_upgrade(t2) and st.fragments == 800)
+	_check("Flavor texts are the user's new ones", GearLibrary.get_upgrade("radik_parang_2").description.begins_with("Mulai battle dengan efek Sakepeng"))
+
+	# The passive reaches the battle: Helder's equipped upgrade -> Verlichting at 55%.
+	var team := UnitFactory.make_player_team(st)
+	var a := _arena(1)
+	var bm: BattleManager = a["bm"]
+	var holder := Node.new()
+	root.add_child(holder)
+	for u in team:
+		holder.add_child(u)
+	_check("Equipped tier 2 starts the battle with Verlichting 55%", team[0].has_status(StatusDefs.Kind.VERLICHTING) and team[0].magnitude_of(StatusDefs.Kind.VERLICHTING) == 55)
+	_check("A unit with only the base upgrade has no passive", not team[1].has_status(StatusDefs.Kind.SAKEPENG))
+
+	# Verlichting: on Strike, chance to gain Energized +1.
+	var h: BattleUnit = a["helder"]
+	h.add_status(StatusDefs.Kind.VERLICHTING, 0, 0, 40, false)
+	var foe: BattleUnit = a["foes"][0]
+	var strike: Move = h.basic_moves[0]
+	bm.proc_roll_override = 10.0 # below 40 -> procs
+	bm._execute_action(h, {"type": "basic", "move": strike, "targets": [foe]})
+	_check("Verlichting procs on Strike (roll 10 < 40%)", h.magnitude_of(StatusDefs.Kind.ENERGIZED) == 1)
+	h.remove_status(StatusDefs.Kind.ENERGIZED)
+	bm.proc_roll_override = 90.0
+	bm._execute_action(h, {"type": "basic", "move": strike, "targets": [foe]})
+	_check("Verlichting does not proc on a high roll", not h.has_status(StatusDefs.Kind.ENERGIZED))
+	var alt := _find_move(h, "Condemn")
+	bm.proc_roll_override = 0.0
+	bm._execute_action(h, {"type": "alteration", "move": alt, "targets": [foe]})
+	_check("Passives only work with Strike, not Alterations", not h.has_status(StatusDefs.Kind.ENERGIZED))
+
+	# Sakepeng: +1 stack per Strike up to the cap, +2 Speed per stack.
+	var r: BattleUnit = a["radik"]
+	r.add_status(StatusDefs.Kind.SAKEPENG, 0, 0, 3, false)
+	var spd := r.get_speed()
+	for i in 5:
+		bm._execute_action(r, {"type": "basic", "move": r.basic_moves[0], "targets": [foe]})
+	_check("Sakepeng stacks to its cap of 3 (+2 Speed each)", r.stacks_of(StatusDefs.Kind.SAKEPENG) == 3 and r.get_speed() == spd + 6)
+	r.remove_status(StatusDefs.Kind.SAKEPENG)
+	r.add_status(StatusDefs.Kind.SAKEPENG, 0, 0, 5, false)
+	for i in 7:
+		bm._execute_action(r, {"type": "basic", "move": r.basic_moves[0], "targets": [foe]})
+	_check("The last upgrade lets Sakepeng reach 5 stacks", r.stacks_of(StatusDefs.Kind.SAKEPENG) == 5)
+
+	# Resonance: +1 stack per Strike, +3 Capability each.
+	var w: BattleUnit = a["wyg"]
+	w.add_status(StatusDefs.Kind.RESONANCE, 0, 0, 3, false)
+	var cap := w.get_capability()
+	for i in 4:
+		bm._execute_action(w, {"type": "basic", "move": w.basic_moves[0], "targets": [foe]})
+	_check("Resonance stacks to 3 (+3 Capability each)", w.stacks_of(StatusDefs.Kind.RESONANCE) == 3 and w.get_capability() == cap + 9)
+
+	# Beringin: +1 Energy at the start of every 4th turn (3rd with the last upgrade).
+	var dn: BattleUnit = a["dean"]
+	dn.add_status(StatusDefs.Kind.BERINGIN, 0, 0, 4, false)
+	dn.current_energy = 0
+	var gained: Array = []
+	for t in 8:
+		var before := dn.current_energy
+		bm._beringin_tick(dn)
+		bm._grant_stored_energy(dn)
+		gained.append(dn.current_energy - before)
+	_check("Beringin: +1 Energy on turns 4 and 8 only", gained == [0, 0, 0, 1, 0, 0, 0, 1], str(gained))
+	dn.remove_status(StatusDefs.Kind.BERINGIN)
+	dn.add_status(StatusDefs.Kind.BERINGIN, 0, 0, 3, false)
+	dn.turns_taken = 0
+	dn.current_energy = 0
+	for t in 6:
+		bm._beringin_tick(dn)
+		bm._grant_stored_energy(dn)
+	_check("The last upgrade: Beringin every 3 turns", dn.current_energy == 2, str(dn.current_energy))
+
+	# Status descriptions carry the real numbers.
+	var g := StatusInstance.new()
+	g.kind = StatusDefs.Kind.GLOOP
+	g.stacks = 6
+	g.turns_left = 2
+	_check("Gloop x6 explains +3 damage and 2 turns", StatusDefs.describe(StatusDefs.Kind.GLOOP, g).contains("+3") and StatusDefs.describe(StatusDefs.Kind.GLOOP, g).contains("2 turns"))
+	var f := StatusInstance.new()
+	f.kind = StatusDefs.Kind.FIRE
+	f.stacks = 2
+	_check("Fire x2 explains 10 fixed damage", StatusDefs.describe(StatusDefs.Kind.FIRE, f).contains("10"))
+	for k in StatusDefs.Kind.values():
+		var inst := StatusInstance.new()
+		inst.kind = k
+		inst.stacks = 1
+		inst.magnitude = 2
+		inst.turns_left = 2
+		_check("Every status has a description: %s" % StatusDefs.get_def(k).label, StatusDefs.describe(k, inst) != "")
+	holder.queue_free()
+	_cleanup(a)
+
+func _test_feedback_batch() -> void:
+	# --- equipment prices: 100 for the one with 3 raised stats, 75 for 2, 65 for 1
+	var price := {"mev_equipment": 100, "gatotkaca": 75, "keotop": 75, "glazen_hart": 75, "haven_aan_zee": 75, "bima_sakti": 75,
+		"jamu_palapa": 75, "thin_barrier": 65, "weapon_holder": 65}
+	for id in price:
+		_check("equipment %s costs %d" % [id, price[id]], GearLibrary.get_equipment(id).cost == price[id], str(GearLibrary.get_equipment(id).cost))
+
+	# --- skill texts: no more "pingsan" / "kuda-kuda", and the user's three examples are in
+	var bad := 0
+	for sk in SkillLibrary.all():
+		if sk.summary.contains("pingsan") or sk.summary.contains("kuda-kuda") or sk.formula.contains("pingsan"):
+			bad += 1
+	_check("skill texts use Stun / Guard Stance, not pingsan / kuda-kuda", bad == 0)
+	_check("user's example texts are used", SkillLibrary.get_skill("d_eruption").summary == "Membuat ledakan rantai dari bawah tanah ke semua musuh." \
+		and SkillLibrary.get_skill("w_firecracker").summary == "Menembakkan Cluster Rocket yang menghujani area dua kali.")
+	_check("Overcome and Heroik mention Guard Stance", SkillLibrary.get_skill("d_overcome").summary.contains("Guard Stance") and SkillLibrary.get_skill("r_heroik").summary.contains("Guard Stance"))
+
+	# --- mission board scrolls
+	var board := MissionBoard.new()
+	var ms := MissionLibrary.build_all()
+	board.missions = ms
+	root.add_child(board)
+	await process_frame
+	var st := GameState.new()
+	st.ensure_defaults()
+	for m in ms:
+		st.mark_cleared(m.id)
+	board.refresh(st)
+	await process_frame
+	_check("Mission board has a scroll area", board._scroll != null and board._scroll.get_parent() != null)
+	_check("The list is taller than the scroll area (so it scrolls)", board._list.get_combined_minimum_size().y > board._scroll.custom_minimum_size.y, "%s vs %s" % [board._list.get_combined_minimum_size().y, board._scroll.custom_minimum_size.y])
+	var last: Button = board._list.get_child(11) # (the test window is tall, so go far down)
+	last.grab_focus()
+	await process_frame
+	await process_frame
+	_check("Focusing a mission far down scrolls the list to it", board._scroll.scroll_vertical > 0, str(board._scroll.scroll_vertical))
+	# On entering the board the cursor goes to the next mission to play: the list must scroll there.
+	var st2 := GameState.new()
+	st2.ensure_defaults()
+	for i in 9:
+		st2.mark_cleared(ms[i].id)
+	board._scroll.scroll_vertical = 0
+	board.refresh(st2)
+	board.focus_first()
+	await process_frame
+	await process_frame
+	await process_frame
+	_check("Entering the board scrolls to the next mission (10th)", board._scroll.scroll_vertical > 0 and board._next_btn.has_focus(), str(board._scroll.scroll_vertical))
+	board.queue_free()
+
+	# --- lobby: Encyclopedia sits right below Training
+	var lobby := LobbyScreen.new()
+	root.add_child(lobby)
+	await process_frame
+	_check("Lobby has the Encyclopedia button right after Training", lobby._encyclopedia_btn.get_index() == lobby._training_btn.get_index() + 1)
+	lobby.queue_free()
+
+	# --- encyclopedia data
+	var all := EnemyLibrary.all()
+	_check("Encyclopedia knows 5 enemies + 3 bosses, no dummy", all.size() == 8 and all.filter(func(e): return e.is_boss).size() == 3 and all.all(func(e): return not e.is_dummy), str(all.size()))
+	var fresh := GameState.new()
+	fresh.ensure_defaults()
+	var seen := EnemyLibrary.visible_for(fresh)
+	_check("Bosses are hidden until met", seen.size() == 5 and seen.all(func(e): return not e.is_boss))
+	_check("Marking a boss as met reveals it, once", fresh.mark_enemy_seen("hpa_seaside") and not fresh.mark_enemy_seen("hpa_seaside") and EnemyLibrary.visible_for(fresh).size() == 6)
+	var sloppy: EnemyType = load("res://data/enemies/sloppy_altered.tres")
+	_check("Sloppy's lines show damage and the status", EnemyLibrary.move_line(sloppy.moves[0]).begins_with("Slosh : ") and EnemyLibrary.move_line(sloppy.moves[0]).contains("5 damage") and EnemyLibrary.move_line(sloppy.moves[0]).contains("+1 Gloop"), EnemyLibrary.move_line(sloppy.moves[0]))
+	_check("Scatter is +3 Gloop to everyone", EnemyLibrary.move_line(sloppy.moves[1]).contains("+3 Gloop") and EnemyLibrary.move_line(sloppy.moves[1]).contains("ke semua"), EnemyLibrary.move_line(sloppy.moves[1]))
+	var seaside: EnemyType = load("res://data/enemies/hpa_seaside.tres")
+	_check("Gloop Grapple lists +5 Gloop and Stun", EnemyLibrary.move_line(seaside.moves[1]).contains("+5 Gloop") and EnemyLibrary.move_line(seaside.moves[1]).contains("Stun"), EnemyLibrary.move_line(seaside.moves[1]))
+	_check("Lashing: 3 hits listed, Gloop once", EnemyLibrary.move_line(seaside.moves[2]).contains("3 x 2 damage") and EnemyLibrary.move_line(seaside.moves[2]).contains("+2 Gloop"), EnemyLibrary.move_line(seaside.moves[2]))
+	var all_have_text := true
+	for e in all:
+		for m in e.moves:
+			if m.description == "":
+				all_have_text = false
+	_check("every enemy move has a description", all_have_text)
+
+	# --- encyclopedia screen
+	var enc := EncyclopediaScreen.new()
+	root.add_child(enc)
+	await process_frame
+	enc.refresh(fresh)
+	_check("Encyclopedia screen: one card per visible enemy", enc._list.get_child_count() == 6)
+	var card: Control = enc._list.get_child(0)
+	var col: VBoxContainer = card.get_child(0)
+	var name_lbl: Label = col.get_child(0).get_child(0)
+	var hp_lbl: Label = col.get_child(1)
+	var move_lbl: RichTextLabel = col.get_child(2)
+	_check("Name and HP are bigger than the move lines", name_lbl.get_theme_font_size("font_size") > hp_lbl.get_theme_font_size("font_size") \
+		and hp_lbl.get_theme_font_size("font_size") > move_lbl.get_theme_font_size("normal_font_size"))
+	_check("HP shows with the name above it", hp_lbl.text.ends_with(" HP") and name_lbl.text != "")
+	_check("The note tells how many enemies are still unknown", enc._note.text.contains("2"), enc._note.text)
+	enc.queue_free()

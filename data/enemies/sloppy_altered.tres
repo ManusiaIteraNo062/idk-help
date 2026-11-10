@@ -12,6 +12,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Slosh"
+description = "Memukul satu target dengan lumpur lengket"
 power = 5
 scaling_mult = 0.0
 inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
@@ -24,6 +25,7 @@ stacks = 3
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Scatter"
+description = "Memercikkan gloop ke seluruh party"
 power = 0
 scaling_mult = 0.0
 target_type = 1

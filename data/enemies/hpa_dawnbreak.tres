@@ -12,6 +12,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Flicker"
+description = "Menjentikkan bara api ke satu target"
 power = 0
 scaling_mult = 0.0
 deals_damage = false
@@ -25,6 +26,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Beam"
+description = "Menembakkan sinar panas ke satu target"
 power = 3
 scaling_mult = 0.0
 inflicts = Array[ExtResource("3_sa")]([SubResource("SA_1")])
@@ -37,6 +39,7 @@ stacks = 1
 [sub_resource type="Resource" id="Move_2"]
 script = ExtResource("1_move")
 move_name = "Firefist"
+description = "Dua pukulan api ke satu target"
 power = 3
 scaling_mult = 0.0
 hits = 2
@@ -50,6 +53,7 @@ kind = 7
 [sub_resource type="Resource" id="Move_3"]
 script = ExtResource("1_move")
 move_name = "Exhume"
+description = "Meledak ke seluruh party, lalu sayap api melindunginya"
 power = 8
 scaling_mult = 0.0
 target_type = 1

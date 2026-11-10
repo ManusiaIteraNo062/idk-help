@@ -33,6 +33,7 @@ var _title: TitleScreen
 var _lobby: LobbyScreen
 var _board: MissionBoard
 var _workshop: WorkshopScreen
+var _encyclopedia: EncyclopediaScreen
 var _dialogue: DialogueBox
 var _rewards: RewardPopup
 var _fader: ScreenFader
@@ -57,6 +58,7 @@ func _ready() -> void:
 	_lobby.missions_pressed.connect(func(): _switch_to(_board))
 	_lobby.workshop_pressed.connect(func(): _switch_to(_workshop))
 	_lobby.training_pressed.connect(_on_training_pressed)
+	_lobby.encyclopedia_pressed.connect(func(): _switch_to(_encyclopedia))
 	add_child(_lobby)
 
 	_board = MissionBoard.new()
@@ -69,6 +71,10 @@ func _ready() -> void:
 	_workshop.changed.connect(func(): _state.save())
 	_workshop.back_pressed.connect(func(): _switch_to(_lobby))
 	add_child(_workshop)
+
+	_encyclopedia = EncyclopediaScreen.new()
+	_encyclopedia.back_pressed.connect(func(): _switch_to(_lobby))
+	add_child(_encyclopedia)
 
 	# Dialogue + rewards share a CanvasLayer so they always draw above the
 	# menus and the battle.
@@ -90,7 +96,7 @@ func _ready() -> void:
 # ---------------------------------------------------------------- screens
 
 func _show_only(screen) -> void:
-	for s in [_title, _lobby, _board, _workshop]:
+	for s in [_title, _lobby, _board, _workshop, _encyclopedia]:
 		s.visible = false
 	screen.refresh(_state)
 	screen.visible = true
@@ -141,7 +147,7 @@ func _on_training_pressed() -> void:
 		return
 	_busy = true
 	await _fader.fade_out(0.4)
-	for s in [_title, _lobby, _board, _workshop]:
+	for s in [_title, _lobby, _board, _workshop, _encyclopedia]:
 		s.visible = false
 	await _run_battle(_make_training_mission(), true)
 	_show_only(_lobby)
@@ -169,7 +175,7 @@ func _on_mission_selected(mission: Mission) -> void:
 
 	# 1) Into the story: black -> title card -> reveal under the dialogue.
 	await _fader.fade_out(0.4)
-	for s in [_title, _lobby, _board, _workshop]:
+	for s in [_title, _lobby, _board, _workshop, _encyclopedia]:
 		s.visible = false
 	var sub_parts: PackedStringArray = []
 	if mission.chapter_label != "":
@@ -227,6 +233,7 @@ func _run_battle(mission: Mission, training: bool = false) -> bool:
 	var bm := BattleManager.new()
 	bm.name = "BattleManager"
 	bm.training = training
+	bm.enemy_met.connect(func(u): _state.mark_enemy_seen(u.enemy_id))
 	bm.player_team = UnitFactory.make_player_team(_state, mission.party_ids)
 
 	var enemies: Array[BattleUnit] = []
@@ -272,6 +279,8 @@ func _run_battle(mission: Mission, training: bool = false) -> bool:
 
 	if _battle_won and not training:
 		_save_inventory(bm)
+	else:
+		_state.save() # (win or lose, remember which enemies were met)
 	_battle_root.queue_free()
 	_battle_root = null
 	return _battle_won

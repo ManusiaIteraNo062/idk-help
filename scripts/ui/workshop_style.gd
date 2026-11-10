@@ -48,7 +48,7 @@ static func frame_style() -> StyleBoxFlat:
 
 ## Returns { "root": Control to add to your screen, "content": VBoxContainer to fill }.
 ## A rounded "WORKSHOP" sign tab sits on the top edge of the silver frame.
-static func build_frame(width: float) -> Dictionary:
+static func build_frame(width: float, sign_text: String = "WORKSHOP") -> Dictionary:
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 0)
 
@@ -69,7 +69,7 @@ static func build_frame(width: float) -> Dictionary:
 	ss.content_margin_top = 6
 	ss.content_margin_bottom = 4
 	sign.add_theme_stylebox_override("panel", ss)
-	sign.add_child(title_label("WORKSHOP", 22))
+	sign.add_child(title_label(sign_text, 22))
 	sign_row.add_child(sign)
 
 	var panel := PanelContainer.new()

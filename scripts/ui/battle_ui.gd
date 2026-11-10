@@ -49,7 +49,10 @@ var _move_list: VBoxContainer
 var _move_scroll: ScrollContainer
 var _target_title: Label
 var _target_grid: GridContainer
+var _info_scroll: ScrollContainer
+var _info_body: Label
 var _hint: Label
+var _picking_target: bool = false  # true while the right box shows "Target who?"
 
 var _slot_row: HBoxContainer
 var _party_cells: Dictionary = {}  # BattleUnit -> { panel, hp, hp_text, ep, ep_text, turn_label, tab, popup, popup_lines }
@@ -299,6 +302,17 @@ func _build_bottom() -> void:
 	_target_title.add_theme_font_size_override("font_size", 14)
 	_target_title.add_theme_color_override("font_color", GOLD)
 	tcol.add_child(_target_title)
+	_info_scroll = ScrollContainer.new()
+	_info_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_info_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_info_scroll.custom_minimum_size = Vector2(0, 66)
+	_info_scroll.visible = false
+	tcol.add_child(_info_scroll)
+	_info_body = Label.new()
+	_info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_info_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_info_body.add_theme_font_size_override("font_size", 12)
+	_info_scroll.add_child(_info_body)
 	_target_grid = GridContainer.new()
 	_target_grid.columns = 2
 	_target_grid.add_theme_constant_override("h_separation", 6)
@@ -416,9 +430,14 @@ func _make_status_slot(u: BattleUnit) -> Dictionary:
 	tab.add_child(tab_label)
 
 	# The list lives on the BattleUI itself (not inside the row) so it can float over the field.
-	var popup := PanelContainer.new()
-	popup.add_theme_stylebox_override("panel", _status_box_style(0.88))
-	popup.custom_minimum_size = Vector2(170, 0)
+	var popup := OrnatePanel.new() # same dark, gold-cornered box as the Guard description
+	popup.custom_minimum_size = Vector2(290, 0)
+	popup.corner_length = 8.0
+	var pstyle := popup.get_theme_stylebox("panel") as StyleBoxFlat
+	pstyle.content_margin_left = 10
+	pstyle.content_margin_right = 10
+	pstyle.content_margin_top = 6
+	pstyle.content_margin_bottom = 6
 	popup.visible = false
 	popup.z_index = 30
 	add_child(popup)
@@ -529,19 +548,30 @@ func _update_unit(u: BattleUnit, animate: bool = true) -> void:
 		c["name"].modulate = Color.WHITE if u.is_alive() else Color(0.5, 0.5, 0.5, 0.8)
 
 func _update_status_box(c: Dictionary, u: BattleUnit) -> void:
-	var lines := u.status_lines()
-	c["tab"].visible = lines.size() > 0 and u.is_alive()
+	var details := u.status_details()
+	c["tab"].visible = details.size() > 0 and u.is_alive()
 	var box: VBoxContainer = c["popup_lines"]
 	for child in box.get_children():
 		box.remove_child(child)
 		child.queue_free()
-	for t in lines:
-		var l := Label.new()
-		l.text = t
-		l.add_theme_font_size_override("font_size", 13)
-		box.add_child(l)
+	for d in details:
+		var title := Label.new()
+		title.text = d[0]
+		title.add_theme_font_size_override("font_size", 14)
+		title.add_theme_color_override("font_color", GOLD)
+		box.add_child(title)
+		var body := Label.new()
+		body.text = d[1]
+		body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		body.custom_minimum_size = Vector2(250, 0)
+		body.add_theme_font_size_override("font_size", 12)
+		box.add_child(body)
+		var gap := Control.new()
+		gap.custom_minimum_size = Vector2(0, 4)
+		box.add_child(gap)
 	var scroll: ScrollContainer = box.get_parent()
-	scroll.custom_minimum_size = Vector2(0, mini(lines.size(), 3) * 21 + 2) # 3 rows visible, scroll for more
+	# about two entries show at once; the mouse wheel scrolls the rest
+	scroll.custom_minimum_size = Vector2(0, 0 if details.is_empty() else (68 if details.size() == 1 else 136))
 	if not c["tab"].visible:
 		c["popup"].visible = false
 	elif c["popup"].visible:
@@ -591,6 +621,8 @@ func _on_player_turn(unit: BattleUnit, actions: Dictionary) -> void:
 
 func _clear_actions() -> void:
 	_on_cancel = Callable()
+	_picking_target = false
+	_hide_info()
 	_clear_children(_move_list)
 	_clear_children(_target_grid)
 	_target_title.text = ""
@@ -606,6 +638,8 @@ func _clear_children(node: Node) -> void:
 
 ## Back to the category list (start of every turn, and Esc from the move list).
 func _show_categories() -> void:
+	_picking_target = false
+	_hide_info()
 	_clear_children(_move_list)
 	_clear_children(_target_grid)
 	_target_title.text = ""
@@ -625,6 +659,8 @@ func _show_category(kind: String) -> void:
 	if _current_unit == null:
 		return
 	_kind = kind
+	_picking_target = false
+	_hide_info()
 	_clear_children(_move_list)
 	_clear_children(_target_grid)
 	_target_title.text = ""
@@ -632,26 +668,26 @@ func _show_category(kind: String) -> void:
 	match kind:
 		"basic":
 			for move in _current_actions["basic"]:
-				_add_entry(move.move_name, func(): _select_targets("basic", move, null))
+				_add_entry(move.move_name, func(): _select_targets("basic", move, null), true, move.move_name, _move_info(move))
 		"alteration":
 			for move in _current_actions["alteration"]:
 				var label: String = move.move_name + "   %d EN" % _current_unit.energy_cost_for(move)
 				var left: int = _current_unit.uses_left(move)
 				if left >= 0:
 					label += "   [%d left]" % left
-				_add_entry(label, func(): _select_targets("alteration", move, null))
+				_add_entry(label, func(): _select_targets("alteration", move, null), true, move.move_name, _move_info(move))
 			for move in _current_actions.get("locked_alteration", []):
 				var why := "needs %d EN" % _current_unit.energy_cost_for(move)
 				if _current_unit.uses_left(move) == 0:
 					why = "no uses left"
-				_add_entry("%s   (%s)" % [move.move_name, why], Callable(), false)
+				_add_entry("%s   (%s)" % [move.move_name, why], Callable(), false, move.move_name, _move_info(move))
 		"item":
 			var items: Array = _current_actions["items"]
 			if items.is_empty():
 				_add_entry("(no items)", Callable(), false)
 			for item in items:
 				var qty: int = battle_manager.party_inventory[item]
-				_add_entry("%s  x%d" % [item.item_name, qty], func(): _select_targets("item", null, item))
+				_add_entry("%s  x%d" % [item.item_name, qty], func(): _select_targets("item", null, item), true, item.item_name, item.description)
 		"guard":
 			var l := Label.new()
 			l.text = "Guard\nHalves damage taken until the next round.\n+1 Energy at the start of your next turn."
@@ -672,12 +708,49 @@ func _on_category_pressed(kind: String) -> void:
 		btn.grab_focus()
 		_hint.visible = true
 
-func _add_entry(text: String, callback: Callable, enabled: bool = true) -> void:
+## info_title / info_body: what the right-hand box shows while this entry is hovered or focused.
+func _add_entry(text: String, callback: Callable, enabled: bool = true, info_title: String = "", info_body: String = "") -> void:
 	var btn := _make_gold_button(text)
 	btn.disabled = not enabled
 	if enabled:
 		btn.pressed.connect(callback)
+	if info_title != "":
+		btn.focus_entered.connect(func(): _show_info(info_title, info_body))
+		btn.mouse_entered.connect(func(): _show_info(info_title, info_body))
 	_move_list.add_child(btn)
+
+func _show_info(title: String, body: String) -> void:
+	if _picking_target:
+		return
+	_target_title.text = title
+	_info_body.text = body
+	_info_scroll.visible = true
+	_target_grid.visible = false
+	_hint.visible = false # more room for the text; the hint returns with the target list
+
+func _hide_info() -> void:
+	_info_scroll.visible = false
+	_target_grid.visible = true
+
+## Live numbers for a move, from the unit's current (buffed) stats.
+func _unit_stats() -> Dictionary:
+	return {"attack": _current_unit.get_attack(), "capability": _current_unit.get_capability(), "speed": _current_unit.get_speed()}
+
+func _move_info(move: Move) -> String:
+	var t := move.description
+	if move.formula != "":
+		t += "\nHitungan: " + move.formula
+	var live := ""
+	if move.skill_id != "":
+		var sk := SkillLibrary.get_skill(move.skill_id)
+		if sk != null:
+			live = sk.preview_text(_unit_stats())
+	elif move.deals_damage:
+		var s := _unit_stats()
+		live = "Saat ini: %d damage" % move.damage_per_hit(s["attack"], s["capability"], s["speed"])
+	if live != "":
+		t += "\n" + live
+	return t
 
 ## Target step: one button per candidate in a 2-column grid (like the field).
 func _select_targets(kind: String, move: Move, item: Item) -> void:
@@ -706,8 +779,12 @@ func _select_targets(kind: String, move: Move, item: Item) -> void:
 	if came_from is Button:
 		came_from.add_theme_stylebox_override("normal", _gold_picked_style()) # stays gold while picking a target
 	_clear_children(_target_grid)
+	_picking_target = true
+	_hide_info()
+	_hint.visible = true
 	_target_title.text = "Target who?"
 	_on_cancel = func():
+		_picking_target = false
 		if is_instance_valid(came_from) and came_from is Button:
 			came_from.add_theme_stylebox_override("normal", _gold_normal_style())
 		_clear_children(_target_grid)
@@ -715,7 +792,7 @@ func _select_targets(kind: String, move: Move, item: Item) -> void:
 		target_focused.emit([])
 		_on_cancel = _show_categories
 		if is_instance_valid(came_from):
-			came_from.grab_focus()
+			came_from.grab_focus() # focus_entered brings the move's description back
 	for target in candidates:
 		var btn := _make_gold_button(target.stats.character_name)
 		btn.custom_minimum_size = Vector2(0, 26)

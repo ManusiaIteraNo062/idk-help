@@ -19,6 +19,10 @@ class_name EnemyType
 ## Training dummies never act.
 @export var is_dummy: bool = false
 
+## "sloppy_altered": the file name, used for the encyclopedia and the "met" record.
+func enemy_id() -> String:
+	return resource_path.get_file().get_basename()
+
 func build_unit() -> BattleUnit:
 	var move_list: Array[Move] = []
 	move_list.assign(moves)
@@ -27,4 +31,5 @@ func build_unit() -> BattleUnit:
 	unit.actions_per_turn = actions_per_turn
 	unit.is_boss = is_boss
 	unit.is_dummy = is_dummy
+	unit.enemy_id = enemy_id()
 	return unit
