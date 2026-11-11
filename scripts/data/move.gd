@@ -123,3 +123,10 @@ func damage_per_hit(strength: int, capability: int, speed: int) -> int:
 # --- Shown in the battle menu when hovering the move ----------------------
 @export var formula: String = ""                 # the damage / effect calculation
 var skill_id: String = ""                        # which SkillLibrary skill built it (for the live preview)
+
+## Heals the user for this x Capability (rounded DOWN) on top of self_heal_flat, once per use
+## (Encompass: 15 + Capability / 4).
+@export var self_heal_per_cap: float = 0.0
+## > 0: after the LAST hit, if the target is below this HP fraction (a kill counts), the user
+## gains an Energized +1 (Onslaught: 0.3).
+@export var energize_if_target_below_hp_pct: float = 0.0

@@ -276,7 +276,10 @@ func tick_end_of_turn() -> void:
 			continue
 		var def := StatusDefs.get_def(kind)
 		if def.dot_per_stack > 0:
-			var dmg := take_true_damage(def.dot_per_stack * st.stacks)
+			var raw_dot: int = def.dot_per_stack * st.stacks
+			if def.max_stack_bonus_damage > 0 and st.stacks >= def.max_stacks:
+				raw_dot += def.max_stack_bonus_damage # Fire at max stacks hurts extra
+			var dmg := take_true_damage(raw_dot)
 			status_log.emit("%s takes %d %s damage!" % [stats.character_name, dmg, def.label])
 			if not is_alive():
 				return

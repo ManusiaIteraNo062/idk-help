@@ -32,6 +32,6 @@ inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
 [resource]
 script = ExtResource("2_et")
 display_name = "Loud Altered"
-health = 120
+health = 155
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1")])
 ai = 1

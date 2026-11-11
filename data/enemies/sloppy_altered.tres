@@ -13,7 +13,7 @@ stacks = 1
 script = ExtResource("1_move")
 move_name = "Slosh"
 description = "Memukul satu target dengan lumpur lengket"
-power = 5
+power = 7
 scaling_mult = 0.0
 inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
 
@@ -36,6 +36,6 @@ inflicts = Array[ExtResource("3_sa")]([SubResource("SA_1")])
 [resource]
 script = ExtResource("2_et")
 display_name = "Sloppy Altered"
-health = 120
+health = 155
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1")])
 ai = 1

@@ -363,11 +363,17 @@ func _resolve_move(user: BattleUnit, move: Move, targets: Array) -> void:
 				break
 			var connected := _resolve_hit(user, move, target, move.inflicts_per_hit or not landed)
 			landed = landed or connected
+		# Onslaught: a nearly-dead (or dead) target after the last hit energizes the user.
+		if landed and move.energize_if_target_below_hp_pct > 0.0 \
+				and float(target.current_health) / float(target.stats.max_health) < move.energize_if_target_below_hp_pct:
+			user.add_status(StatusDefs.Kind.ENERGIZED, 1, 0, 1, false)
+			battle_log.emit("%s: %s energizes!" % [user.stats.character_name, move.move_name])
 
-	# Once-per-use heal for the user (Encompass).
-	if move.self_heal_flat > 0:
-		user.heal(move.self_heal_flat)
-		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, move.self_heal_flat])
+	# Once-per-use heal for the user (Encompass: 15 + Capability / 4, rounded down).
+	var once_heal: int = move.self_heal_flat + floori(user.get_capability() * move.self_heal_per_cap)
+	if once_heal > 0:
+		user.heal(once_heal)
+		battle_log.emit("%s recovers %d HP!" % [user.stats.character_name, once_heal])
 
 ## One damaging hit: dodge -> damage (+crit) -> lifesteal -> execute -> stun.
 ## Returns true if the hit connected (was not dodged).

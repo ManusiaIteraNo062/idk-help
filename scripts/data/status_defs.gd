@@ -30,6 +30,8 @@ class Def:
 	# When it runs out on its own, the owner takes this % of max HP as damage
 	# (never lethal: it can leave them at 1 HP). 0 = no crash.
 	var expire_self_damage_pct: float = 0.0
+	# Extra fixed damage at turn end when the status is at its max stacks (Fire: +10).
+	var max_stack_bonus_damage: int = 0
 
 	func _init(p_label: String, p_buff: bool, p_max: int, p_duration: int,
 			p_dot: int = 0, p_ticks: bool = true) -> void:
@@ -49,8 +51,10 @@ static func get_def(kind: Kind) -> Def:
 
 static func _build() -> void:
 	# --- debuffs / damage over time ---
-	_defs[Kind.FIRE] = Def.new("Fire", false, 3, 1, 5)       # 5 per stack, gone at turn end
-	_defs[Kind.POISON] = Def.new("Poison", false, 2, 2, 2)   # 2 per stack, 2 turns
+	var fire := Def.new("Fire", false, 3, 1, 5)              # 5 per stack, gone at turn end
+	fire.max_stack_bonus_damage = 10                         # ...and +10 more at 3 stacks
+	_defs[Kind.FIRE] = fire
+	_defs[Kind.POISON] = Def.new("Poison", false, 2, 2, 3)   # 3 per stack, 2 turns
 	_defs[Kind.STUN] = Def.new("Stun", false, 1, 1, 0, false)
 	_defs[Kind.GLOOP] = Def.new("Gloop", false, 10, 2)       # +1 damage taken per 2 stacks
 	_defs[Kind.SAPPED] = Def.new("Sapped", false, 1, 1)      # Alterations cost +1 energy
@@ -92,7 +96,10 @@ static func describe(kind: Kind, st: StatusInstance) -> String:
 	var turn_text := "Lasts %d turn%s." % [turns, "" if turns == 1 else "s"]
 	match kind:
 		Kind.FIRE:
-			return "Turn End: take %d fixed damage (%d per stack). Removed afterwards." % [def.dot_per_stack * st.stacks, def.dot_per_stack]
+			var fire_total: int = def.dot_per_stack * st.stacks
+			if st.stacks >= def.max_stacks:
+				fire_total += def.max_stack_bonus_damage
+			return "Turn End: take %d fixed damage (%d per stack, +%d extra at max stacks). Removed afterwards." % [fire_total, def.dot_per_stack, def.max_stack_bonus_damage]
 		Kind.POISON:
 			return "Turn End: take %d fixed damage (%d per stack). %s" % [def.dot_per_stack * st.stacks, def.dot_per_stack, turn_text]
 		Kind.STUN:

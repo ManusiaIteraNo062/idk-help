@@ -8,7 +8,7 @@
 script = ExtResource("1_move")
 move_name = "Gloop Rain"
 description = "Melempar gumpalan gloop dari kejauhan"
-power = 8
+power = 11
 scaling_mult = 0.0
 
 [sub_resource type="Resource" id="SA_0"]
@@ -20,7 +20,7 @@ stacks = 1
 script = ExtResource("1_move")
 move_name = "Heavy Rain"
 description = "Menghujani seluruh party, membuat Alteration lebih mahal"
-power = 6
+power = 8
 scaling_mult = 0.0
 target_type = 1
 cooldown = 2
@@ -29,6 +29,6 @@ inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
 [resource]
 script = ExtResource("2_et")
 display_name = "Faraway Altered"
-health = 75
+health = 95
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1")])
 ai = 1

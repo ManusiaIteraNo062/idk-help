@@ -105,8 +105,8 @@ static func _build() -> void:
 	# ======================= Radik - Palesa =======================
 	_add("r_ravaging", "radik", "Ravaging", false, "3 Energy",
 		"Serangan bertubi yang cepat, menyapu semua musuh dalam satu rentetan.",
-		"Damage = Speed x 2 ke semua musuh.",
-		func(): return [_dmg(_alt("Ravaging", 3, T.ALL_ENEMIES), 0, SPD, 2.0)])
+		"Damage = (10 + (Speed / 2)) x 2 ke semua musuh.",
+		func(): return [_dmg(_alt("Ravaging", 3, T.ALL_ENEMIES), 20, SPD, 1.0)]) # (10 + Speed/2) x 2 = 20 + Speed
 	_add("r_one_two", "radik", "One-Two", false, "1 Energy",
 		"Dua tebasan beruntun yang datang lebih cepat dari kedipan mata.",
 		"Damage = 10 + (Capability / 2), sebanyak 2 kali.",
@@ -135,9 +135,10 @@ static func _build() -> void:
 		func(s: Dictionary): return "Saat ini: +%d Speed" % Move.round_up(s["capability"] * 0.25))
 	_add("r_berandalan", "radik", "\"Berandalan\"", true, "4 Energy",
 		"Menerjang nekat dengan seluruh tenaga dan kecepatan. Jika musuh tumbang, napas Radik kembali.",
-		"Damage = 20 + (Speed x 3). +2 Energy jika musuh tumbang.",
+		"Damage = Capability + (Speed x 1.5). +2 Energy jika musuh tumbang.",
 		func():
-			var m := _dmg(_alt("\"Berandalan\"", 4, T.SINGLE_ENEMY), 20, SPD, 3.0)
+			var m := _dmg(_alt("\"Berandalan\"", 4, T.SINGLE_ENEMY), 0, CAP, 1.0)
+			m.speed_mult = 1.5
 			m.energy_on_kill = 2
 			return [m])
 
@@ -151,24 +152,26 @@ static func _build() -> void:
 			return [m])
 	_add("d_eruption", "dean", "Eruption", false, "3 Energy",
 		"Membuat ledakan rantai dari bawah tanah ke semua musuh.",
-		"Damage = 5 + (Capability / 5) ke semua musuh.",
-		func(): return [_dmg(_alt("Eruption", 3, T.ALL_ENEMIES), 5, CAP, 0.2)])
+		"Damage = 20 + (Capability x 4) ke semua musuh.",
+		func(): return [_dmg(_alt("Eruption", 3, T.ALL_ENEMIES), 20, CAP, 4.0)])
 	_add("d_encompass", "dean", "Encompass", false, "2 Energy",
 		"Rantai melingkar mengurung semua musuh dalam Stun, sementara Dean menarik napas.",
-		"Stun semua musuh. Dean pulih 15 HP.",
+		"Stun semua musuh. Dean pulih 15 + (Capability / 4, dibulatkan ke bawah) HP.",
 		func():
 			var m := _alt("Encompass", 2, T.ALL_ENEMIES)
 			m.deals_damage = false
 			m.stun_turns = 1
 			m.self_heal_flat = 15
+			m.self_heal_per_cap = 0.25
 			return [m],
-		func(_s: Dictionary): return "")
+		func(s: Dictionary): return "Saat ini: pulih %d HP" % (15 + floori(s["capability"] * 0.25)))
 	_add("d_onslaught", "dean", "Onslaught", true, "2 Energy",
 		"Tiga cambukan rantai berturut-turut ke satu musuh.",
-		"Damage = 10 + (Strength / 2), sebanyak 3 kali.",
+		"Damage = 13 + (Strength / 2), sebanyak 3 kali. Jika HP target di bawah 30% setelah pukulan terakhir, Dean mendapat Energized.",
 		func():
-			var m := _dmg(_alt("Onslaught", 2, T.SINGLE_ENEMY), 10, STR, 0.5)
+			var m := _dmg(_alt("Onslaught", 2, T.SINGLE_ENEMY), 13, STR, 0.5)
 			m.hits = 3
+			m.energize_if_target_below_hp_pct = 0.3
 			return [m])
 	_add("d_overcome", "dean", "Overcome", true, "1 Energy",
 		"Merantai satu musuh dalam Stun dan langsung masuk Guard Stance.",

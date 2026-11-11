@@ -35,6 +35,7 @@ func _init() -> void:
 	await _test_tutorial_in_flow()
 	_test_upgrades_and_passives()
 	await _test_feedback_batch()
+	_test_balance_batch()
 	print("\n", "ALL PASSED" if _fails == 0 else "%d FAILED" % _fails)
 	quit(1 if _fails > 0 else 0)
 
@@ -66,7 +67,7 @@ func _test_missions() -> void:
 	_check("4 Sloppy still get letters A-D (mission 4 wave 3)", ms[3].build_wave(2)[3].stats.character_name == "Sloppy Altered D")
 	_check("m6 wave1 = 4 different mobs", ms[5].build_wave(0).size() == 4)
 	_check("m3 boss wave", ms[2].build_wave(0)[0].stats.character_name == "H.P.A - Seaside" and ms[2].build_wave(0).size() == 4)
-	_check("m12 is Red Sleigh, 2 actions", ms[11].build_wave(0)[0].actions_per_turn == 2 and ms[11].build_wave(0)[0].stats.max_health == 650)
+	_check("m12 is Red Sleigh, 2 actions", ms[11].build_wave(0)[0].actions_per_turn == 2 and ms[11].build_wave(0)[0].stats.max_health == 974)
 	_check("rewards are 250", ms[0].fragment_reward == 250 and ms[11].fragment_reward == 250)
 	var lines := DialogueParser.parse("Admin (via Drone): Hello.\n> Narration: with colon\nHelder [R]: Side.")
 	_check("parser: 3 lines", lines.size() == 3)
@@ -82,14 +83,18 @@ func _test_statuses() -> void:
 	u.add_status(K.FIRE, 4)
 	_check("fire caps at 3 stacks", u.stacks_of(K.FIRE) == 3)
 	u.tick_end_of_turn()
-	_check("fire deals 5 x 3 then is removed", u.current_health == 85 and not u.has_status(K.FIRE), str(u.current_health))
+	_check("fire at max stacks: 5 x 3 + 10 extra = 25, then removed", u.current_health == 75 and not u.has_status(K.FIRE), str(u.current_health))
+	u = _unit()
+	u.add_status(K.FIRE, 2)
+	u.tick_end_of_turn()
+	_check("fire below max stacks: just 5 per stack (no bonus)", u.current_health == 90, str(u.current_health))
 
 	u = _unit()
 	u.add_status(K.POISON)
 	u.tick_end_of_turn()
-	_check("poison tick 1", u.current_health == 98 and u.has_status(K.POISON))
+	_check("poison tick 1 (3 damage)", u.current_health == 97 and u.has_status(K.POISON))
 	u.tick_end_of_turn()
-	_check("poison tick 2 then gone", u.current_health == 96 and not u.has_status(K.POISON))
+	_check("poison tick 2 then gone", u.current_health == 94 and not u.has_status(K.POISON))
 
 	u = _unit()
 	u.add_status(K.GLOOP, 3)
@@ -183,8 +188,8 @@ func _enemy(id: String) -> BattleUnit:
 	return u
 
 func _test_enemy_data() -> void:
-	var hp := {"tough_altered": 200, "aggressive_altered": 75, "loud_altered": 120, "faraway_altered": 75,
-		"sloppy_altered": 120, "hpa_seaside": 550, "hpa_dawnbreak": 1000, "hpa_red_sleigh": 650}
+	var hp := {"tough_altered": 260, "aggressive_altered": 95, "loud_altered": 155, "faraway_altered": 95,
+		"sloppy_altered": 155, "hpa_seaside": 824, "hpa_dawnbreak": 1500, "hpa_red_sleigh": 974}
 	for id in hp:
 		var u := _enemy(id)
 		_check("%s HP %d" % [id, hp[id]], u.stats.max_health == hp[id])
@@ -207,7 +212,7 @@ func _test_enemy_data() -> void:
 	var shove: Move = tough.moveset.moves[0]
 	var hero := _unit(1000)
 	var dmg := bm._resolve_hit_for_test(tough, shove, hero)
-	_check("Shove deals a fixed 7", dmg == 7, str(dmg))
+	_check("Shove deals a fixed 10", dmg == 10, str(dmg))
 	# Boss RANDOM: only ever picks off-cooldown moves.
 	var boss := _enemy("hpa_seaside")
 	boss.start_cooldown(boss.moveset.moves[2])
@@ -433,7 +438,8 @@ func _test_skill_effects() -> void:
 	# --- Radik ---
 	l0 = _lost(f0); l1 = _lost(f1)
 	bm._resolve_move(r, _find_move(r, "Ravaging"), both)
-	_check("Ravaging = Speed x 2 to all", _lost(f0) - l0 == r.stats.speed * 2 and _lost(f1) - l1 == r.stats.speed * 2)
+	var rav := Move.round_up((10 + r.get_speed() / 2.0) * 2.0)
+	_check("Ravaging = (10 + Speed/2) x 2 to all", _lost(f0) - l0 == rav and _lost(f1) - l1 == rav, "%d vs %d" % [_lost(f0) - l0, rav])
 	l0 = _lost(f0)
 	bm._resolve_move(r, _find_move(r, "One-Two"), [f0])
 	_check("One-Two = 10 + Capability/2, twice", _lost(f0) - l0 == 2 * (10 + Move.round_up(r.stats.capability / 2.0)))
@@ -447,14 +453,15 @@ func _test_skill_effects() -> void:
 	var spd := r.get_speed()
 	bm._resolve_move(r, _find_move(r, "Stance \"Kilau\""), [r])
 	_check("Kilau = +ceil(Capability/4) Speed", r.get_speed() == spd + Move.round_up(r.stats.capability / 4.0))
-	var prey := UnitFactory.make_enemy("Prey", 40, 0, 0, 0, [] as Array[Move])
+	var prey := UnitFactory.make_enemy("Prey", 10, 0, 0, 0, [] as Array[Move])
 	root.add_child(prey)
 	r.current_energy = 0
 	bm._resolve_move(r, _find_move(r, "\"Berandalan\""), [prey])
 	_check("Berandalan kill refunds 2 Energy", not prey.is_alive() and r.current_energy == 2, str(r.current_energy))
 	l0 = _lost(f0)
 	bm._resolve_move(r, _find_move(r, "\"Berandalan\""), [f0])
-	_check("Berandalan = 20 + Speed x 3", _lost(f0) - l0 == 20 + r.get_speed() * 3 and r.current_energy == 2)
+	var beran := Move.round_up(r.get_capability() + 1.5 * r.get_speed())
+	_check("Berandalan = Capability + Speed x 1.5", _lost(f0) - l0 == beran and r.current_energy == 2, "%d vs %d" % [_lost(f0) - l0, beran])
 	prey.queue_free()
 
 	# --- Dean ---
@@ -463,17 +470,18 @@ func _test_skill_effects() -> void:
 	_check("Enchain = Strength + Stun", _lost(f0) - l0 == dn.get_attack() and f0.has_status(StatusDefs.Kind.STUN))
 	l0 = _lost(f0); l1 = _lost(f1)
 	bm._resolve_move(dn, _find_move(dn, "Eruption"), both)
-	var eru := 5 + Move.round_up(dn.stats.capability / 5.0)
-	_check("Eruption = 5 + Capability/5 to all", _lost(f0) - l0 == eru and _lost(f1) - l1 == eru)
+	var eru := 20 + dn.get_capability() * 4
+	_check("Eruption = 20 + Capability x 4 to all", _lost(f0) - l0 == eru and _lost(f1) - l1 == eru, "%d vs %d" % [_lost(f0) - l0, eru])
 	f0.remove_status(StatusDefs.Kind.STUN)
 	dn.current_health = 10
 	bm._resolve_move(dn, _find_move(dn, "Encompass"), both)
-	_check("Encompass: stuns all + heals Dean 15", f0.has_status(StatusDefs.Kind.STUN) and f1.has_status(StatusDefs.Kind.STUN) and dn.current_health == 25, str(dn.current_health))
+	var enc_heal := 15 + floori(dn.get_capability() * 0.25)
+	_check("Encompass: stuns all + heals Dean 15 + Capability/4 (rounded down)", f0.has_status(StatusDefs.Kind.STUN) and f1.has_status(StatusDefs.Kind.STUN) and dn.current_health == 10 + enc_heal, str(dn.current_health))
 	f0.remove_status(StatusDefs.Kind.STUN)
 	f1.remove_status(StatusDefs.Kind.STUN)
 	l0 = _lost(f0)
 	bm._resolve_move(dn, _find_move(dn, "Onslaught"), [f0])
-	_check("Onslaught = 10 + Strength/2, three times", _lost(f0) - l0 == 3 * (10 + Move.round_up(dn.get_attack() / 2.0)))
+	_check("Onslaught = 13 + Strength/2, three times", _lost(f0) - l0 == 3 * (13 + Move.round_up(dn.get_attack() / 2.0)))
 	dn.is_guarding = false
 	bm._resolve_move(dn, _find_move(dn, "Overcome"), [f1])
 	_check("Overcome: stun + guard", f1.has_status(StatusDefs.Kind.STUN) and dn.is_guarding)
@@ -1150,11 +1158,11 @@ func _test_feedback_batch() -> void:
 	_check("Bosses are hidden until met", seen.size() == 5 and seen.all(func(e): return not e.is_boss))
 	_check("Marking a boss as met reveals it, once", fresh.mark_enemy_seen("hpa_seaside") and not fresh.mark_enemy_seen("hpa_seaside") and EnemyLibrary.visible_for(fresh).size() == 6)
 	var sloppy: EnemyType = load("res://data/enemies/sloppy_altered.tres")
-	_check("Sloppy's lines show damage and the status", EnemyLibrary.move_line(sloppy.moves[0]).begins_with("Slosh : ") and EnemyLibrary.move_line(sloppy.moves[0]).contains("5 damage") and EnemyLibrary.move_line(sloppy.moves[0]).contains("+1 Gloop"), EnemyLibrary.move_line(sloppy.moves[0]))
+	_check("Sloppy's lines show damage and the status", EnemyLibrary.move_line(sloppy.moves[0]).begins_with("Slosh : ") and EnemyLibrary.move_line(sloppy.moves[0]).contains("7 damage") and EnemyLibrary.move_line(sloppy.moves[0]).contains("+1 Gloop"), EnemyLibrary.move_line(sloppy.moves[0]))
 	_check("Scatter is +3 Gloop to everyone", EnemyLibrary.move_line(sloppy.moves[1]).contains("+3 Gloop") and EnemyLibrary.move_line(sloppy.moves[1]).contains("ke semua"), EnemyLibrary.move_line(sloppy.moves[1]))
 	var seaside: EnemyType = load("res://data/enemies/hpa_seaside.tres")
 	_check("Gloop Grapple lists +5 Gloop and Stun", EnemyLibrary.move_line(seaside.moves[1]).contains("+5 Gloop") and EnemyLibrary.move_line(seaside.moves[1]).contains("Stun"), EnemyLibrary.move_line(seaside.moves[1]))
-	_check("Lashing: 3 hits listed, Gloop once", EnemyLibrary.move_line(seaside.moves[2]).contains("3 x 2 damage") and EnemyLibrary.move_line(seaside.moves[2]).contains("+2 Gloop"), EnemyLibrary.move_line(seaside.moves[2]))
+	_check("Lashing: 3 hits listed, Gloop once", EnemyLibrary.move_line(seaside.moves[2]).contains("3 x 4 damage") and EnemyLibrary.move_line(seaside.moves[2]).contains("+2 Gloop"), EnemyLibrary.move_line(seaside.moves[2]))
 	var all_have_text := true
 	for e in all:
 		for m in e.moves:
@@ -1178,3 +1186,120 @@ func _test_feedback_batch() -> void:
 	_check("HP shows with the name above it", hp_lbl.text.ends_with(" HP") and name_lbl.text != "")
 	_check("The note tells how many enemies are still unknown", enc._note.text.contains("2"), enc._note.text)
 	enc.queue_free()
+
+func _test_balance_batch() -> void:
+	# --- enemy damage: mobs +45%, bosses +125% (rounded down); new final numbers are used as given
+	var dmg := {
+		"tough_altered": {"Shove": 10, "Ram": 7}, "aggressive_altered": {"Clawing": 4, "Hewing": 11},
+		"faraway_altered": {"Gloop Rain": 11, "Heavy Rain": 8}, "sloppy_altered": {"Slosh": 7},
+		"hpa_seaside": {"Needle": 11, "Gloop Grapple": 6, "Lashing": 4, "Outburst": 6},
+		"hpa_dawnbreak": {"Beam": 6, "Firefist": 6, "Exhume": 18},
+		"hpa_red_sleigh": {"Thrashing": 13, "Clockwatch": 22, "Peace to All": 3}}
+	for id in dmg:
+		var et := load("res://data/enemies/%s.tres" % id) as EnemyType
+		for mv in dmg[id]:
+			var found: Move = null
+			for m in et.moves:
+				if m.move_name == mv:
+					found = m
+			_check("%s / %s deals %d" % [id, mv, dmg[id][mv]], found != null and found.power == dmg[id][mv], str(found.power if found else -1))
+
+	# --- H.P.A Seaside: Outburst
+	var seaside := load("res://data/enemies/hpa_seaside.tres") as EnemyType
+	var outburst: Move = seaside.moves[3]
+	_check("Seaside has a 4th move, Outburst: AOE, 1-turn cooldown", seaside.moves.size() == 4 and outburst.move_name == "Outburst" and outburst.target_type == Move.Target.ALL_ENEMIES and outburst.cooldown == 1)
+	_check("Outburst inflicts 3 Gloop and 1 Poison", outburst.inflicts.size() == 2 and outburst.inflicts[0].kind == StatusDefs.Kind.GLOOP and outburst.inflicts[0].stacks == 3 and outburst.inflicts[1].kind == StatusDefs.Kind.POISON and outburst.inflicts[1].stacks == 1)
+
+	var a := _arena(1)
+	var bm: BattleManager = a["bm"]
+	var team: Array = a["team"]
+	for u in team:
+		u.stats.speed = 0 # (Speed is dodge chance: keep the party hittable so the numbers are exact)
+	var boss := seaside.build_unit()
+	a["holder_extra"] = boss
+	root.add_child(boss)
+	var before := []
+	for u in team:
+		before.append(u.current_health)
+	bm._resolve_move(boss, outburst, team)
+	var ok := true
+	for i in team.size():
+		var u: BattleUnit = team[i]
+		var lost: int = before[i] - u.current_health
+		# 6 damage, +1 per 2 Gloop stacks already applied by earlier hits (none yet): the status lands AFTER the hit
+		if lost != 6 or u.stacks_of(StatusDefs.Kind.GLOOP) != 3 or u.stacks_of(StatusDefs.Kind.POISON) != 1:
+			ok = false
+	_check("Outburst hits everyone for 6 + 3 Gloop + 1 Poison", ok)
+	boss.queue_free()
+
+	# --- H.P.A Red Sleigh: Peace to All grants SELF Time Dilation, 3 damage, 6 Gloop to everyone
+	var sleigh := (load("res://data/enemies/hpa_red_sleigh.tres") as EnemyType).build_unit()
+	root.add_child(sleigh)
+	var peace: Move = sleigh.moveset.moves[0]
+	_check("Peace to All: damaging AOE move that grants self Time Dilation", peace.deals_damage and peace.power == 3 and peace.target_type == Move.Target.ALL_ENEMIES \
+		and peace.grants_self.size() == 1 and peace.grants_self[0].kind == StatusDefs.Kind.TIME_DILATION and peace.inflicts[0].stacks == 6)
+	for u in team:
+		u.remove_status(StatusDefs.Kind.GLOOP)
+		u.remove_status(StatusDefs.Kind.POISON)
+	var hp2 := []
+	for u in team:
+		hp2.append(u.current_health)
+	sleigh.is_acting = true
+	bm._resolve_move(sleigh, peace, team)
+	var all_ok := true
+	for i in team.size():
+		var u: BattleUnit = team[i]
+		if hp2[i] - u.current_health != 3 or u.stacks_of(StatusDefs.Kind.GLOOP) != 6 or u.has_status(StatusDefs.Kind.TIME_DILATION):
+			all_ok = false
+	_check("Peace to All: everyone takes 3 and gets 6 Gloop; nobody else gets Time Dilation", all_ok)
+	_check("Peace to All: Red Sleigh itself gains Time Dilation", sleigh.has_status(StatusDefs.Kind.TIME_DILATION))
+	sleigh.queue_free()
+
+	# --- Burn / Poison
+	var K := StatusDefs.Kind
+	var f3 := StatusInstance.new()
+	f3.kind = K.FIRE
+	f3.stacks = 3
+	_check("Burn (Fire) text mentions the +10 at max stacks and totals 25", StatusDefs.describe(K.FIRE, f3).contains("25") and StatusDefs.describe(K.FIRE, f3).contains("+10"), StatusDefs.describe(K.FIRE, f3))
+	var p2 := StatusInstance.new()
+	p2.kind = K.POISON
+	p2.stacks = 2
+	p2.turns_left = 2
+	_check("Poison x2 explains 6 damage (3 per stack)", StatusDefs.describe(K.POISON, p2).contains("6") and StatusDefs.describe(K.POISON, p2).contains("3 per stack"), StatusDefs.describe(K.POISON, p2))
+
+	# --- Dean: Encompass rounds the heal DOWN; Onslaught energizes on a nearly-dead target
+	var dn: BattleUnit = a["dean"]
+	dn.stats.capability = 7
+	dn.current_health = 10
+	var foe: BattleUnit = a["foes"][0]
+	bm._resolve_move(dn, _find_move(dn, "Encompass"), [foe])
+	_check("Encompass heal = 15 + floor(7 / 4) = 16", dn.current_health == 26, str(dn.current_health))
+	var ons := _find_move(dn, "Onslaught")
+	var per_hit := ons.damage_per_hit(dn.get_attack(), dn.get_capability(), dn.get_speed())
+	var low := UnitFactory.make_enemy("Low", 100, 0, 0, 0, [] as Array[Move])
+	var mid := UnitFactory.make_enemy("Mid", 100, 0, 0, 0, [] as Array[Move])
+	root.add_child(low)
+	root.add_child(mid)
+	low.current_health = 3 * per_hit + 20   # 20 / 100 left after the last hit = below 30%
+	mid.current_health = 3 * per_hit + 50   # 50% left: not low enough
+	bm.crit_chance = 0.0
+	dn.remove_status(K.ENERGIZED)
+	bm._resolve_move(dn, ons, [mid])
+	_check("Onslaught: target at 50% after the last hit -> no Energized", not dn.has_status(K.ENERGIZED))
+	bm._resolve_move(dn, ons, [low])
+	_check("Onslaught: target below 30% after the last hit -> Energized", dn.magnitude_of(K.ENERGIZED) == 1)
+	dn.remove_status(K.ENERGIZED)
+	var doomed := UnitFactory.make_enemy("Doomed", 100, 0, 0, 0, [] as Array[Move])
+	root.add_child(doomed)
+	doomed.current_health = 3 * per_hit - 5 # dies on the last hit: a kill counts as below 30%
+	bm._resolve_move(dn, ons, [doomed])
+	_check("Onslaught: a kill counts too", not doomed.is_alive() and dn.has_status(K.ENERGIZED))
+	for x in [low, mid, doomed]:
+		x.queue_free()
+
+	# --- Radik / Dean numbers shown in the workshop text
+	_check("Ravaging text: (10 + (Speed / 2)) x 2", SkillLibrary.get_skill("r_ravaging").formula.contains("(10 + (Speed / 2)) x 2"))
+	_check("Berandalan text: Capability + (Speed x 1.5)", SkillLibrary.get_skill("r_berandalan").formula.contains("Capability + (Speed x 1.5)"))
+	_check("Eruption text: 20 + (Capability x 4)", SkillLibrary.get_skill("d_eruption").formula.contains("20 + (Capability x 4)"))
+	_check("Onslaught text: 13 + (Strength / 2) and the 30% rule", SkillLibrary.get_skill("d_onslaught").formula.contains("13 + (Strength / 2)") and SkillLibrary.get_skill("d_onslaught").formula.contains("30%"))
+	_cleanup(a)

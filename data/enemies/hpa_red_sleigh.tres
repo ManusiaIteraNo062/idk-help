@@ -7,7 +7,7 @@
 [sub_resource type="Resource" id="SA_0"]
 script = ExtResource("3_sa")
 kind = 3
-stacks = 2
+stacks = 6
 
 [sub_resource type="Resource" id="SA_1"]
 script = ExtResource("3_sa")
@@ -16,11 +16,10 @@ kind = 6
 [sub_resource type="Resource" id="Move_0"]
 script = ExtResource("1_move")
 move_name = "Peace to All"
-description = "Waktu melambat untuknya, gloop untuk semua orang"
-power = 0
+description = "Waktu melambat untuknya, sementara gloop menimpa semua orang"
+power = 3
 scaling_mult = 0.0
 target_type = 1
-deals_damage = false
 inflicts = Array[ExtResource("3_sa")]([SubResource("SA_0")])
 grants_self = Array[ExtResource("3_sa")]([SubResource("SA_1")])
 
@@ -28,7 +27,7 @@ grants_self = Array[ExtResource("3_sa")]([SubResource("SA_1")])
 script = ExtResource("1_move")
 move_name = "Thrashing"
 description = "Mengamuk dua kali ke seluruh party"
-power = 6
+power = 13
 scaling_mult = 0.0
 hits = 2
 target_type = 1
@@ -38,7 +37,7 @@ cooldown = 2
 script = ExtResource("1_move")
 move_name = "Clockwatch"
 description = "Menghentikan waktu satu target"
-power = 10
+power = 22
 scaling_mult = 0.0
 stun_turns = 1
 cooldown = 1
@@ -62,7 +61,7 @@ inflicts = Array[ExtResource("3_sa")]([SubResource("SA_2")])
 [resource]
 script = ExtResource("2_et")
 display_name = "H.P.A - Red Sleigh"
-health = 650
+health = 974
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1"), SubResource("Move_2"), SubResource("Move_3")])
 ai = 2
 actions_per_turn = 2

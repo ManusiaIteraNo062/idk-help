@@ -8,14 +8,14 @@
 script = ExtResource("1_move")
 move_name = "Shove"
 description = "Mendorong satu target dengan bahu raksasa"
-power = 7
+power = 10
 scaling_mult = 0.0
 
 [sub_resource type="Resource" id="Move_1"]
 script = ExtResource("1_move")
 move_name = "Ram"
 description = "Menyeruduk dan menghantam seluruh party"
-power = 5
+power = 7
 scaling_mult = 0.0
 target_type = 1
 cooldown = 2
@@ -23,6 +23,6 @@ cooldown = 2
 [resource]
 script = ExtResource("2_et")
 display_name = "Tough Altered"
-health = 200
+health = 260
 moves = Array[ExtResource("1_move")]([SubResource("Move_0"), SubResource("Move_1")])
 ai = 1
