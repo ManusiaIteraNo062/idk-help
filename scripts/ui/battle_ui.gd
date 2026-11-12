@@ -509,6 +509,15 @@ func _rebuild_enemy_list() -> void:
 		if u.is_boss:
 			name_lbl.add_theme_color_override("font_color", GOLD)
 		row.add_child(name_lbl)
+		if u.is_boss:
+			# Hover the tag to see why this fight changes at 60% HP.
+			var tag := Label.new()
+			tag.text = "BOSS"
+			tag.add_theme_font_size_override("font_size", 11)
+			tag.add_theme_color_override("font_color", Color(0.9, 0.5, 0.2))
+			tag.mouse_filter = Control.MOUSE_FILTER_STOP
+			tag.tooltip_text = "Musuh ini mendapat Stun Immunity saat darah menyentuh 60% HP"
+			row.add_child(tag)
 		var bar := StatBar.new()
 		bar.fill_color = Color(0.9, 0.55, 0.15) if u.is_boss else Color(0.85, 0.2, 0.2)
 		bar.custom_minimum_size = Vector2(60, 14 if u.is_boss else 11)

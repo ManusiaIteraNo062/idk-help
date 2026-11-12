@@ -36,6 +36,7 @@ func _init() -> void:
 	_test_upgrades_and_passives()
 	await _test_feedback_batch()
 	_test_balance_batch()
+	await _test_round3()
 	print("\n", "ALL PASSED" if _fails == 0 else "%d FAILED" % _fails)
 	quit(1 if _fails > 0 else 0)
 
@@ -470,8 +471,8 @@ func _test_skill_effects() -> void:
 	_check("Enchain = Strength + Stun", _lost(f0) - l0 == dn.get_attack() and f0.has_status(StatusDefs.Kind.STUN))
 	l0 = _lost(f0); l1 = _lost(f1)
 	bm._resolve_move(dn, _find_move(dn, "Eruption"), both)
-	var eru := 20 + dn.get_capability() * 4
-	_check("Eruption = 20 + Capability x 4 to all", _lost(f0) - l0 == eru and _lost(f1) - l1 == eru, "%d vs %d" % [_lost(f0) - l0, eru])
+	var eru := 25 + dn.get_capability() * 3
+	_check("Eruption = 25 + Capability x 3 to all", _lost(f0) - l0 == eru and _lost(f1) - l1 == eru, "%d vs %d" % [_lost(f0) - l0, eru])
 	f0.remove_status(StatusDefs.Kind.STUN)
 	dn.current_health = 10
 	bm._resolve_move(dn, _find_move(dn, "Encompass"), both)
@@ -515,8 +516,8 @@ func _test_skill_effects() -> void:
 	fine.queue_free()
 	l0 = _lost(f0); l1 = _lost(f1)
 	bm._resolve_move(w, _find_move(w, "Firecracker"), both)
-	var fc := 15 + Move.round_up(cap / 10.0)
-	_check("Firecracker = 15 + Capability/10, twice, to all", _lost(f0) - l0 == 2 * fc and _lost(f1) - l1 == 2 * fc)
+	var fc := 15 + Move.round_up(cap / 5.0)
+	_check("Firecracker = 15 + Capability/5, twice, to all", _lost(f0) - l0 == 2 * fc and _lost(f1) - l1 == 2 * fc)
 
 	# Regression: Secure's on-hit self-heal (old demo move) must still work.
 	var secure := Move.new()
@@ -1300,6 +1301,103 @@ func _test_balance_batch() -> void:
 	# --- Radik / Dean numbers shown in the workshop text
 	_check("Ravaging text: (10 + (Speed / 2)) x 2", SkillLibrary.get_skill("r_ravaging").formula.contains("(10 + (Speed / 2)) x 2"))
 	_check("Berandalan text: Capability + (Speed x 1.5)", SkillLibrary.get_skill("r_berandalan").formula.contains("Capability + (Speed x 1.5)"))
-	_check("Eruption text: 20 + (Capability x 4)", SkillLibrary.get_skill("d_eruption").formula.contains("20 + (Capability x 4)"))
+	_check("Eruption text: 25 + (Capability x 3)", SkillLibrary.get_skill("d_eruption").formula.contains("25 + (Capability x 3)"))
 	_check("Onslaught text: 13 + (Strength / 2) and the 30% rule", SkillLibrary.get_skill("d_onslaught").formula.contains("13 + (Strength / 2)") and SkillLibrary.get_skill("d_onslaught").formula.contains("30%"))
 	_cleanup(a)
+
+func _test_round3() -> void:
+	# --- skill costs
+	var cost := {"d_enchain": 2, "d_overcome": 2, "w_booster": 3, "d_eruption": 3, "w_firecracker": 2}
+	for id in cost:
+		var sk := SkillLibrary.get_skill(id)
+		var c: int = sk.build_moves()[0].energy_cost
+		_check("%s costs %d Energy (move and text)" % [id, cost[id]], c == cost[id] and sk.cost_text.begins_with(str(cost[id])), "%d / %s" % [c, sk.cost_text])
+
+	# --- dodge chance = Speed - 15
+	var u := _unit()
+	for pair in [[0, 0.0], [10, 0.0], [15, 0.0], [16, 0.01], [40, 0.25], [200, 0.95]]:
+		u.stats.speed = pair[0]
+		_check("Speed %d -> %d%% dodge" % [pair[0], int(pair[1] * 100)], is_equal_approx(u.dodge_chance(), pair[1]), str(u.dodge_chance()))
+	u.stats.speed = 15
+	u.add_status(StatusDefs.Kind.SWIFT, 1, 0, 10, false)
+	_check("Buffed Speed counts for dodge (15 + 10 -> 10%)", is_equal_approx(u.dodge_chance(), 0.10))
+	u.stats.speed = 15
+	var dodges := 0
+	for i in 400:
+		if _unit().roll_dodge():
+			dodges += 1
+	_check("A Speed-0 unit never dodges", dodges == 0)
+
+	# --- boss Stun Immunity at 60% HP
+	var K := StatusDefs.Kind
+	var boss := UnitFactory.make_enemy("Boss", 1000, 0, 0, 0, [] as Array[Move])
+	boss.is_boss = true
+	var normal := UnitFactory.make_enemy("Mob", 1000, 0, 0, 0, [] as Array[Move])
+	root.add_child(boss)
+	root.add_child(normal)
+	var got := {"n": 0}
+	boss.stun_immunity_gained.connect(func(_u): got["n"] += 1)
+	boss.take_damage(390) # 61%
+	_check("Boss at 61% is not immune yet", not boss.has_status(K.STUN_IMMUNITY))
+	boss.add_status(K.STUN)
+	_check("...and can still be stunned", boss.has_status(K.STUN))
+	boss.take_damage(10) # exactly 60%
+	_check("Boss at exactly 60% becomes Stun immune and shakes off its Stun", boss.has_status(K.STUN_IMMUNITY) and not boss.has_status(K.STUN) and got["n"] == 1)
+	boss.add_status(K.STUN)
+	_check("A Stun immune boss can no longer be stunned", not boss.has_status(K.STUN))
+	boss.take_damage(50)
+	_check("The immunity only triggers once", got["n"] == 1)
+	normal.take_damage(900)
+	normal.add_status(K.STUN)
+	_check("Normal enemies never get Stun Immunity", not normal.has_status(K.STUN_IMMUNITY) and normal.has_status(K.STUN))
+	_check("Stun Immunity explains itself in the status text", StatusDefs.describe(K.STUN_IMMUNITY, StatusInstance.new()).contains("Stun"))
+	boss.queue_free()
+	normal.queue_free()
+	# the BOSS tags carry the explanation (encyclopedia and battle list)
+	var enc := EncyclopediaScreen.new()
+	root.add_child(enc)
+	await process_frame
+	var st := GameState.new()
+	st.ensure_defaults()
+	st.mark_enemy_seen("hpa_seaside")
+	enc.refresh(st)
+	var tip_found := false
+	for card in enc._list.get_children():
+		for lbl in card.find_children("*", "Label", true, false):
+			if lbl.text == "BOSS" and lbl.tooltip_text == "Musuh ini mendapat Stun Immunity saat darah menyentuh 60% HP":
+				tip_found = true
+	_check("Encyclopedia: hovering the BOSS tag explains Stun Immunity", tip_found)
+	enc.queue_free()
+
+	# --- mission texts
+	var ms := MissionLibrary.build_all()
+	var summaries := {0: "Hari pertama Helder di Kulon Office", 1: "Berkerja sama dengan Kulon Office", 4: "Nikahan ditabrak lari Altered", 7: "Api dan Sulfur yang pekat di udara", 12: "To Kulon Office, dan kesuksesannya"}
+	for i in summaries:
+		_check("Mission %d summary is the new text" % (i + 1), ms[i].summary == summaries[i], ms[i].summary)
+	var todo := 0
+	var labels_ok := true
+	for i in ms.size():
+		if ms[i].summary.contains("TODO") or ms[i].summary == "":
+			todo += 1
+		if ms[i].chapter_label != "Misi %d" % (i + 1):
+			labels_ok = false
+	_check("No mission summary is a TODO or empty", todo == 0)
+	_check("All 13 title cards read 'Misi N' (missions 1-3 fixed)", labels_ok)
+
+	# --- dialogue: narration is bold, centered, one size smaller, not italic; speech untouched
+	var box := DialogueBox.new()
+	root.add_child(box)
+	await process_frame
+	var lines: Array[DialogueLine] = DialogueParser.parse("> Angin laut berembus.\nHelder: Halo.")
+	box.play(lines)
+	await process_frame
+	var lbl: RichTextLabel = box._text_label
+	_check("Narration: bold + centered, no italics", lbl.text.contains("[b]") and lbl.text.contains("[center]") and not lbl.text.contains("[i]"), lbl.text)
+	_check("Narration is one size smaller (20 vs 21)", lbl.get_theme_font_size("bold_font_size") == 20 and DialogueBox.NARRATION_SIZE == DialogueBox.SPEECH_SIZE - 1)
+	_check("Narration is centered vertically too", (lbl.size_flags_vertical & Control.SIZE_SHRINK_CENTER) != 0 and (lbl.size_flags_vertical & Control.SIZE_EXPAND) != 0 and lbl.fit_content)
+	box._opened_at = 0
+	box._advance()
+	box._advance()
+	await process_frame
+	_check("Speech lines keep the old look (plain, left, 21)", lbl.text == "Halo." and lbl.get_theme_font_size("normal_font_size") == 21 and lbl.size_flags_vertical == Control.SIZE_EXPAND_FILL, lbl.text)
+	box.queue_free()

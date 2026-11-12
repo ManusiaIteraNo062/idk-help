@@ -67,6 +67,7 @@ func _spawn_team(team: Array, party: bool) -> void:
 		_last_hp[unit] = unit.current_health
 		unit.defeated.connect(_on_unit_defeated)
 		unit.hp_changed.connect(_on_hp_changed)
+		unit.stun_immunity_gained.connect(_on_stun_immunity)
 
 # ---- layout -------------------------------------------------------------
 
@@ -160,6 +161,26 @@ func _on_hp_changed(unit: BattleUnit, new_hp: int) -> void:
 	tw.set_parallel(true)
 	tw.tween_property(lbl, "position:y", lbl.position.y - 44.0, 0.9)
 	tw.tween_property(lbl, "modulate:a", 0.0, 0.9).set_delay(0.4)
+	tw.chain().tween_callback(lbl.queue_free)
+
+## A boss reached 60% HP: "Stun Immunity!" floats over it.
+func _on_stun_immunity(unit: BattleUnit) -> void:
+	if not _figures.has(unit) or not is_instance_valid(_figures[unit]):
+		return
+	var fig: CharacterPlaceholder = _figures[unit]
+	var lbl := Label.new()
+	lbl.text = "Stun Immunity!"
+	lbl.add_theme_font_size_override("font_size", 22)
+	lbl.add_theme_color_override("font_color", Color(1.0, 0.82, 0.3))
+	lbl.add_theme_color_override("font_outline_color", Color.BLACK)
+	lbl.add_theme_constant_override("outline_size", 5)
+	lbl.position = fig.position + Vector2(-60.0, -72.0 * fig.figure_scale / 0.65 - 34.0)
+	lbl.z_index = 5
+	add_child(lbl)
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(lbl, "position:y", lbl.position.y - 30.0, 1.4)
+	tw.tween_property(lbl, "modulate:a", 0.0, 1.0).set_delay(0.9)
 	tw.chain().tween_callback(lbl.queue_free)
 
 ## "Dodge!" over the target (any attack, even one that deals no damage) plus a

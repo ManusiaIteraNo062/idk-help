@@ -94,6 +94,8 @@ func _make_card(e: EnemyType) -> Control:
 		tag.add_theme_font_size_override("font_size", 13)
 		tag.add_theme_color_override("font_color", Color(0.9, 0.5, 0.2))
 		tag.size_flags_vertical = Control.SIZE_SHRINK_END
+		tag.mouse_filter = Control.MOUSE_FILTER_STOP
+		tag.tooltip_text = "Musuh ini mendapat Stun Immunity saat darah menyentuh 60% HP" # hover the BOSS tag
 		head.add_child(tag)
 
 	var hp := Label.new()

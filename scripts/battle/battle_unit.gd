@@ -13,6 +13,8 @@ signal hp_changed(unit: BattleUnit, new_health: int)
 signal energy_changed(unit: BattleUnit, new_energy: int)
 signal defeated(unit: BattleUnit)
 signal statuses_changed(unit: BattleUnit)
+## A boss just reached 60% HP and became immune to Stun (the stage shows a label).
+signal stun_immunity_gained(unit: BattleUnit)
 signal status_log(text: String) # battle-log lines about statuses (BattleManager forwards them)
 
 const MAX_ENERGY := 5 # energy bar cap, same for every unit
@@ -117,7 +119,18 @@ func _lose_health(amount: int) -> int:
 	if current_health == 0:
 		_clear_statuses()
 		defeated.emit(self)
+	elif is_boss:
+		_check_boss_phase()
 	return amount
+
+## Bosses at 60% HP or less become immune to Stun (and shake off any Stun they have).
+func _check_boss_phase() -> void:
+	if has_status(StatusDefs.Kind.STUN_IMMUNITY) or current_health * 100 > stats.max_health * 60:
+		return
+	remove_status(StatusDefs.Kind.STUN)
+	add_status(StatusDefs.Kind.STUN_IMMUNITY, 1, 0, 0, false)
+	status_log.emit("%s gains Stun Immunity!" % stats.character_name)
+	stun_immunity_gained.emit(self)
 
 ## Instant KO that ignores Guard (used by execute effects like Condemn).
 func kill() -> void:
@@ -193,11 +206,15 @@ func consume_energized() -> int:
 ## Test hook: the next attacks on this unit are always dodged.
 var force_dodge: bool = false
 
+## Dodge chance: (Speed - 15)%, never below 0 and never above 95.
+## (Speed 15 or less never dodges; Speed 40 dodges 25% of attacks.)
+func dodge_chance() -> float:
+	return clampf(float(get_speed() - 15), 0.0, 95.0) / 100.0
+
 func roll_dodge() -> bool:
 	if force_dodge:
 		return true
-	var chance: float = clamp(get_speed(), 0, 95) / 100.0
-	return randf() < chance
+	return randf() < dodge_chance()
 
 # ---- status effects -------------------------------------------------------
 
@@ -217,6 +234,9 @@ func magnitude_of(kind: StatusDefs.Kind) -> int:
 func add_status(kind: StatusDefs.Kind, stacks_to_add: int = 1, duration: int = 0,
 		magnitude: int = 0, announce: bool = true) -> void:
 	if not is_alive():
+		return
+	if kind == StatusDefs.Kind.STUN and has_status(StatusDefs.Kind.STUN_IMMUNITY):
+		status_log.emit("%s is immune to Stun!" % stats.character_name)
 		return
 	var def := StatusDefs.get_def(kind)
 	var st: StatusInstance = statuses.get(kind)

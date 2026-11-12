@@ -143,17 +143,17 @@ static func _build() -> void:
 			return [m])
 
 	# ======================= Dean - Taksaka =======================
-	_add("d_enchain", "dean", "Enchain", false, "1 Energy",
+	_add("d_enchain", "dean", "Enchain", false, "2 Energy",
 		"Melilitkan rantai ke satu musuh, menghantamnya, lalu mengikatnya dalam Stun.",
 		"Damage = Strength, lalu Stun target.",
 		func():
-			var m := _dmg(_alt("Enchain", 1, T.SINGLE_ENEMY), 0, STR, 1.0)
+			var m := _dmg(_alt("Enchain", 2, T.SINGLE_ENEMY), 0, STR, 1.0)
 			m.stun_turns = 1
 			return [m])
 	_add("d_eruption", "dean", "Eruption", false, "3 Energy",
 		"Membuat ledakan rantai dari bawah tanah ke semua musuh.",
-		"Damage = 20 + (Capability x 4) ke semua musuh.",
-		func(): return [_dmg(_alt("Eruption", 3, T.ALL_ENEMIES), 20, CAP, 4.0)])
+		"Damage = 25 + (Capability x 3) ke semua musuh.",
+		func(): return [_dmg(_alt("Eruption", 3, T.ALL_ENEMIES), 25, CAP, 3.0)])
 	_add("d_encompass", "dean", "Encompass", false, "2 Energy",
 		"Rantai melingkar mengurung semua musuh dalam Stun, sementara Dean menarik napas.",
 		"Stun semua musuh. Dean pulih 15 + (Capability / 4, dibulatkan ke bawah) HP.",
@@ -173,11 +173,11 @@ static func _build() -> void:
 			m.hits = 3
 			m.energize_if_target_below_hp_pct = 0.3
 			return [m])
-	_add("d_overcome", "dean", "Overcome", true, "1 Energy",
+	_add("d_overcome", "dean", "Overcome", true, "2 Energy",
 		"Merantai satu musuh dalam Stun dan langsung masuk Guard Stance.",
 		"Stun target. Dean masuk posisi Guard.",
 		func():
-			var m := _alt("Overcome", 1, T.SINGLE_ENEMY)
+			var m := _alt("Overcome", 2, T.SINGLE_ENEMY)
 			m.deals_damage = false
 			m.stun_turns = 1
 			m.self_guard = true
@@ -207,11 +207,11 @@ static func _build() -> void:
 			m.heal_pct_base = 20.0
 			return [m],
 		func(_s: Dictionary): return "")
-	_add("w_booster", "wyg01", "Booster", false, "2 Energy",
+	_add("w_booster", "wyg01", "Booster", false, "3 Energy",
 		"Mengalirkan energi cadangan ke seluruh tim lewat modul booster.",
 		"+1 Energy untuk semua anggota tim (termasuk pemakai).",
 		func():
-			var m := _alt("Booster", 2, T.ALL_ALLIES)
+			var m := _alt("Booster", 3, T.ALL_ALLIES)
 			m.grants_energy_allies = 1
 			return [m],
 		func(_s: Dictionary): return "")
@@ -224,8 +224,8 @@ static func _build() -> void:
 			return [m])
 	_add("w_firecracker", "wyg01", "Firecracker", true, "2 Energy",
 		"Menembakkan Cluster Rocket yang menghujani area dua kali.",
-		"Damage = 15 + (Capability / 10), sebanyak 2 kali ke semua musuh.",
+		"Damage = 15 + (Capability / 5), sebanyak 2 kali ke semua musuh.",
 		func():
-			var m := _dmg(_alt("Firecracker", 2, T.ALL_ENEMIES), 15, CAP, 0.1)
+			var m := _dmg(_alt("Firecracker", 2, T.ALL_ENEMIES), 15, CAP, 0.2)
 			m.hits = 2
 			return [m])

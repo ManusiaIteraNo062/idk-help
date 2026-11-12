@@ -12,7 +12,7 @@ class_name StatusDefs
 ##   * PERMANENT (-1) lasts the whole fight.
 
 enum Kind { FIRE, POISON, STUN, GLOOP, SAPPED, STRENGTHEN, TIME_DILATION, FLAME_WINGS, ENERGIZED, SWIFT, INJ_CQB, INJ_ACB,
-	VERLICHTING, SAKEPENG, BERINGIN, RESONANCE }
+	VERLICHTING, SAKEPENG, BERINGIN, RESONANCE, STUN_IMMUNITY }
 
 const PERMANENT := -1
 
@@ -87,6 +87,8 @@ static func _build() -> void:
 	var reso := Def.new("Resonance", true, 99, PERMANENT)
 	reso.bonus_capability = 3 # per stack
 	_defs[Kind.RESONANCE] = reso
+	# Bosses gain this when their HP reaches 60% (see BattleUnit): Stun no longer works on them.
+	_defs[Kind.STUN_IMMUNITY] = Def.new("Stun Immunity", true, 1, PERMANENT)
 
 ## The "what does this do" text shown when hovering a status in battle,
 ## with the real numbers for this unit (stacks, turns left, magnitude).
@@ -117,7 +119,7 @@ static func describe(kind: Kind, st: StatusInstance) -> String:
 		Kind.ENERGIZED:
 			return "Gain %d Energy at the start of the next turn." % st.magnitude
 		Kind.SWIFT:
-			return "+%d Speed (and dodge chance) until the mission ends." % st.magnitude
+			return "+%d Speed (dodge chance is Speed - 15) until the mission ends." % st.magnitude
 		Kind.INJ_CQB:
 			return "+5 Speed and +10 Strength. %s Then lose 10%% of max HP." % turn_text
 		Kind.INJ_ACB:
@@ -130,6 +132,8 @@ static func describe(kind: Kind, st: StatusInstance) -> String:
 			return "Gain 1 Energy at the start of every %d turns." % st.magnitude
 		Kind.RESONANCE:
 			return "Each Strike adds a stack (max %d). +3 Capability per stack (now +%d)." % [st.magnitude, 3 * st.stacks]
+		Kind.STUN_IMMUNITY:
+			return "Can no longer be affected by the Stun debuff."
 	return ""
 
 ## "Gloop x3", "Strengthen +3", "Sakepeng x2/5"... plus turns left where it matters.
